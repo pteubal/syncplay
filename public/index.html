@@ -1,6 +1,707 @@
-SyncPlay
-Música sincronizada para todos
-Soy el organizador
-Subís la música y controlás la reproducción
-Soy participante
-Escuchás lo que el organizador reproduce
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SyncPlay</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --surface3: #26262e;
+    --accent: #7c6af7;
+    --accent2: #a89ef9;
+    --text: #f0f0f5;
+    --muted: #6b6b80;
+    --danger: #e05a5a;
+    --success: #4caf82;
+    --border: rgba(255,255,255,0.06);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+
+  /* ── Header ── */
+  header {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+  }
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .logo span { color: var(--accent); }
+  .connected-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .dot.live { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+  /* ── Main card ── */
+  .card {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  /* ── Now playing ── */
+  .now-playing {
+    padding: 28px 28px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .np-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .np-art {
+    width: 72px; height: 72px;
+    border-radius: 12px;
+    background: var(--surface3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .np-art svg { opacity: 0.4; }
+  .np-art.playing::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    border: 1.5px solid var(--accent);
+    animation: pulse-border 2s infinite;
+  }
+  @keyframes pulse-border {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .np-title {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .np-subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 20px;
+  }
+
+  /* ── Progress bar ── */
+  .progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .progress-time {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 36px;
+  }
+  .progress-bar {
+    flex: 1;
+    height: 3px;
+    background: var(--surface3);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.5s linear;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  .btn-ctrl {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color 0.2s, background 0.2s;
+    padding: 8px;
+  }
+  .btn-ctrl:hover { color: var(--text); background: var(--surface2); }
+  .btn-ctrl:disabled { opacity: 0.25; cursor: default; }
+  .btn-play {
+    width: 52px; height: 52px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, transform 0.1s;
+  }
+  .btn-play:hover { background: var(--accent2); }
+  .btn-play:active { transform: scale(0.95); }
+  .btn-play:disabled { opacity: 0.3; cursor: default; }
+
+  /* ── Playlist ── */
+  .playlist-section {
+    padding: 0;
+  }
+  .playlist-header {
+    padding: 16px 28px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .playlist-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .playlist-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .playlist-list {
+    list-style: none;
+    max-height: 260px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface3) transparent;
+  }
+  .playlist-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 28px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-radius: 0;
+  }
+  .playlist-item:hover { background: var(--surface2); }
+  .playlist-item.active { background: var(--surface3); }
+  .playlist-item.active .track-name { color: var(--accent2); }
+  .track-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    min-width: 20px;
+    text-align: right;
+  }
+  .track-name {
+    flex: 1;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .track-del {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    opacity: 0;
+    display: flex;
+    padding: 4px;
+    border-radius: 4px;
+    transition: opacity 0.2s, color 0.2s;
+  }
+  .playlist-item:hover .track-del { opacity: 1; }
+  .track-del:hover { color: var(--danger); }
+
+  /* ── Upload ── */
+  .upload-section {
+    width: 100%;
+    max-width: 520px;
+  }
+  .upload-zone {
+    border: 1.5px dashed var(--surface3);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(124,106,247,0.04); }
+  .upload-zone input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .upload-icon { color: var(--muted); margin-bottom: 10px; }
+  .upload-text { font-size: 14px; color: var(--muted); }
+  .upload-text strong { color: var(--accent2); font-weight: 500; }
+  .upload-hint { font-size: 12px; color: var(--surface3); margin-top: 4px; font-family: 'DM Mono', monospace; }
+
+  /* ── Status bar ── */
+  .status-bar {
+    width: 100%;
+    max-width: 520px;
+    margin-top: 8px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-bar.uploading { color: var(--accent2); }
+  .status-bar.error { color: var(--danger); }
+
+  /* ── Role selector ── */
+  .role-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 100;
+    padding: 24px;
+  }
+  .role-logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  .role-logo span { color: var(--accent); }
+  .role-subtitle {
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    text-align: center;
+  }
+  .role-btn {
+    width: 100%;
+    max-width: 320px;
+    padding: 18px 24px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.2s, border-color 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .role-btn:hover { background: var(--surface2); border-color: var(--accent); }
+  .role-btn small { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .role-btn.host { border-color: rgba(124,106,247,0.4); }
+
+  /* ── Empty state ── */
+  .empty-state {
+    padding: 32px 28px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Role selector -->
+<div class="role-screen" id="roleScreen">
+  <div class="role-logo">Sync<span>Play</span></div>
+  <div class="role-subtitle">Música sincronizada para todos</div>
+  <button class="role-btn host" onclick="chooseRole('host')">
+    Soy el organizador
+    <small>Subís la música y controlás la reproducción</small>
+  </button>
+  <button class="role-btn" onclick="chooseRole('guest')">
+    Soy participante
+    <small>Escuchás lo que el organizador reproduce</small>
+  </button>
+</div>
+
+<!-- Main app (hidden until role chosen) -->
+<div id="app" style="display:none; width:100%; max-width:520px; display:none; flex-direction:column; align-items:center; gap:16px;">
+
+  <header>
+    <div class="logo">Sync<span>Play</span></div>
+    <div class="connected-badge">
+      <div class="dot" id="connDot"></div>
+      <span id="connLabel">conectando…</span>
+    </div>
+  </header>
+
+  <!-- Player card -->
+  <div class="card">
+    <div class="now-playing">
+      <div class="np-label">reproduciendo ahora</div>
+      <div class="np-art" id="npArt">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+      </div>
+      <div class="np-title" id="npTitle">Sin canciones</div>
+      <div class="np-subtitle" id="npSubtitle">—</div>
+      <div class="progress-wrap">
+        <span class="progress-time" id="timeElapsed">0:00</span>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-time" id="timeDuration">0:00</span>
+      </div>
+      <div class="controls">
+        <button class="btn-ctrl" id="btnPrev" onclick="cmd('prev')" title="Anterior">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+        </button>
+        <button class="btn-play" id="btnPlay" onclick="togglePlay()" disabled>
+          <svg id="iconPlay" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="iconPause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+        <button class="btn-ctrl" id="btnNext" onclick="cmd('next')" title="Siguiente">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="m6 18 8.5-6L6 6v12zm2-8.14 4.96 3.14L8 15.14V9.86zM16 6h2v12h-2z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Playlist -->
+    <div class="playlist-section">
+      <div class="playlist-header">
+        <span class="playlist-title">lista de reproducción</span>
+        <span class="playlist-count" id="plCount">0 canciones</span>
+      </div>
+      <ul class="playlist-list" id="playlistEl">
+        <li class="empty-state">Subí canciones para empezar</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Upload zone (host only) -->
+  <div class="upload-section" id="uploadSection" style="display:none">
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg" multiple onchange="uploadFiles(this.files)">
+      <div class="upload-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="color:var(--muted)"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+      </div>
+      <div class="upload-text"><strong>Elegí archivos MP3</strong> o arrastralos acá</div>
+      <div class="upload-hint">MP3 · WAV · OGG · hasta 50 MB por archivo</div>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+    <span id="statusText">Esperando canciones…</span>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Role ──────────────────────────────────────────────────────────────────────
+let role = null;
+
+function chooseRole(r) {
+  role = r;
+  document.getElementById('roleScreen').style.display = 'none';
+  const app = document.getElementById('app');
+  app.style.display = 'flex';
+  if (role === 'host') {
+    document.getElementById('uploadSection').style.display = 'block';
+  }
+  initSocket();
+}
+
+// ── Socket ────────────────────────────────────────────────────────────────────
+let socket;
+let serverTimeDelta = 0; // our clock - server clock
+
+function initSocket() {
+  socket = io();
+
+  socket.on('connect', () => {
+    setConn(true);
+  });
+  socket.on('disconnect', () => {
+    setConn(false);
+  });
+  socket.on('state', (s) => {
+    serverTimeDelta = Date.now() - s.serverTime;
+    applyState(s);
+  });
+}
+
+function cmd(event, payload) {
+  if (role !== 'host') return;
+  socket.emit(event, payload);
+}
+
+function setConn(ok) {
+  document.getElementById('connDot').className = 'dot' + (ok ? ' live' : '');
+  document.getElementById('connLabel').textContent = ok ? 'en vivo' : 'sin conexión';
+}
+
+// ── State → UI ────────────────────────────────────────────────────────────────
+let currentState = null;
+let audio = new Audio();
+let tickInterval = null;
+let audioReady = false;
+
+audio.addEventListener('ended', () => {
+  if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
+});
+
+function applyState(s) {
+  currentState = s;
+  renderPlaylist(s);
+  renderNowPlaying(s);
+  syncAudio(s);
+}
+
+function renderPlaylist(s) {
+  const ul = document.getElementById('playlistEl');
+  const count = document.getElementById('plCount');
+  count.textContent = s.playlist.length + ' canción' + (s.playlist.length !== 1 ? 'es' : '');
+
+  if (s.playlist.length === 0) {
+    ul.innerHTML = '<li class="empty-state">Subí canciones para empezar</li>';
+    return;
+  }
+
+  ul.innerHTML = '';
+  s.playlist.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.className = 'playlist-item' + (i === s.currentIndex ? ' active' : '');
+    li.innerHTML = `
+      <span class="track-num">${i === s.currentIndex ? '▶' : (i + 1)}</span>
+      <span class="track-name">${escHtml(t.name)}</span>
+      ${role === 'host' ? `<button class="track-del" onclick="deleteTrack(event,'${t.id}')" title="Eliminar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>` : ''}
+    `;
+    li.addEventListener('click', (e) => {
+      if (e.target.closest('.track-del')) return;
+      cmd('select', i);
+    });
+    ul.appendChild(li);
+  });
+}
+
+function renderNowPlaying(s) {
+  const track = s.playlist[s.currentIndex];
+  document.getElementById('npTitle').textContent = track ? track.name : 'Sin canciones';
+  document.getElementById('npSubtitle').textContent = track
+    ? `Pista ${s.currentIndex + 1} de ${s.playlist.length}`
+    : '—';
+  document.getElementById('npArt').className = 'np-art' + (s.playing ? ' playing' : '');
+
+  const playBtn = document.getElementById('btnPlay');
+  playBtn.disabled = !track;
+  document.getElementById('iconPlay').style.display = s.playing ? 'none' : 'block';
+  document.getElementById('iconPause').style.display = s.playing ? 'block' : 'none';
+
+  document.getElementById('btnPrev').disabled = role !== 'host' || s.currentIndex <= 0;
+  document.getElementById('btnNext').disabled = role !== 'host' || s.currentIndex >= s.playlist.length - 1;
+
+  setStatus(s);
+}
+
+function setStatus(s) {
+  const bar = document.getElementById('statusBar');
+  const txt = document.getElementById('statusText');
+  if (!s.playlist.length) {
+    bar.className = 'status-bar';
+    txt.textContent = 'Esperando canciones…';
+  } else if (!s.playing) {
+    bar.className = 'status-bar';
+    txt.textContent = 'Pausado';
+  } else {
+    bar.className = 'status-bar';
+    txt.textContent = role === 'host' ? 'Reproduciendo para todos ✦' : 'Sincronizado con el organizador ✦';
+  }
+}
+
+// ── Audio sync ─────────────────────────────────────────────────────────────────
+function syncAudio(s) {
+  const track = s.playlist[s.currentIndex];
+  const trackUrl = track ? `/track/${track.id}` : null;
+
+  if (!track) {
+    audio.pause();
+    audio.src = '';
+    clearInterval(tickInterval);
+    return;
+  }
+
+  if (audio.src !== location.origin + (trackUrl || '')) {
+    audio.src = trackUrl;
+    audioReady = false;
+    audio.load();
+    audio.addEventListener('canplay', () => { audioReady = true; }, { once: true });
+  }
+
+  if (s.playing) {
+    const elapsed = s.startedAt ? (Date.now() - serverTimeDelta - s.startedAt) / 1000 : 0;
+    const target = Math.max(0, elapsed);
+
+    const doPlay = () => {
+      const diff = Math.abs(audio.currentTime - target);
+      if (diff > 0.5) audio.currentTime = target;
+      audio.play().catch(() => {});
+    };
+
+    if (audioReady) {
+      doPlay();
+    } else {
+      audio.addEventListener('canplay', doPlay, { once: true });
+    }
+
+    clearInterval(tickInterval);
+    tickInterval = setInterval(updateProgress, 500);
+  } else {
+    if (s.pausedAt !== null) {
+      audio.currentTime = s.pausedAt;
+    }
+    audio.pause();
+    clearInterval(tickInterval);
+    updateProgress();
+  }
+}
+
+function updateProgress() {
+  if (!audio.src) return;
+  const cur = audio.currentTime;
+  const dur = audio.duration || 0;
+  document.getElementById('timeElapsed').textContent = fmt(cur);
+  document.getElementById('timeDuration').textContent = fmt(dur);
+  document.getElementById('progressFill').style.width = dur ? (cur / dur * 100) + '%' : '0%';
+}
+
+function fmt(s) {
+  if (!isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function togglePlay() {
+  if (role !== 'host') return;
+  if (currentState?.playing) cmd('pause');
+  else cmd('play');
+}
+
+function deleteTrack(e, id) {
+  e.stopPropagation();
+  fetch('/track/' + id, { method: 'DELETE' });
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+function uploadFiles(files) {
+  if (!files.length) return;
+  const bar = document.getElementById('statusBar');
+  const txt = document.getElementById('statusText');
+  bar.className = 'status-bar uploading';
+  txt.textContent = `Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`;
+
+  const fd = new FormData();
+  Array.from(files).forEach(f => fd.append('tracks', f));
+
+  fetch('/upload', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(() => {
+      bar.className = 'status-bar';
+      txt.textContent = 'Archivos subidos ✓';
+      setTimeout(() => setStatus(currentState || {}), 2000);
+    })
+    .catch(() => {
+      bar.className = 'status-bar error';
+      txt.textContent = 'Error al subir. Intentá de nuevo.';
+    });
+
+  document.getElementById('fileInput').value = '';
+}
+
+// Drag & drop
+const zone = document.getElementById('uploadZone');
+if (zone) {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag');
+    uploadFiles(e.dataTransfer.files);
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
