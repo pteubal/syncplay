@@ -6,377 +6,79 @@
 <title>SyncPlay</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
-
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
-    --bg: #0d0d0f;
-    --surface: #16161a;
-    --surface2: #1e1e24;
-    --surface3: #26262e;
-    --accent: #7c6af7;
-    --accent2: #a89ef9;
-    --text: #f0f0f5;
-    --muted: #6b6b80;
-    --danger: #e05a5a;
-    --success: #4caf82;
-    --border: rgba(255,255,255,0.06);
+    --bg: #0d0d0f; --surface: #16161a; --surface2: #1e1e24; --surface3: #26262e;
+    --accent: #7c6af7; --accent2: #a89ef9; --text: #f0f0f5; --muted: #6b6b80;
+    --danger: #e05a5a; --success: #4caf82; --border: rgba(255,255,255,0.06);
   }
-
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15px;
-    line-height: 1.5;
-    overflow-x: hidden;
-  }
-
-  body {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-height: 100vh;
-    padding: 24px 16px 48px;
-  }
-
-  /* ── Header ── */
-  header {
-    width: 100%;
-    max-width: 520px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 32px;
-  }
-  .logo {
-    font-family: 'DM Mono', monospace;
-    font-size: 18px;
-    letter-spacing: -0.5px;
-    color: var(--text);
-  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; line-height: 1.5; overflow-x: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 24px 16px 48px; }
+  header { width: 100%; max-width: 520px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+  .logo { font-family: 'DM Mono', monospace; font-size: 18px; letter-spacing: -0.5px; color: var(--text); }
   .logo span { color: var(--accent); }
-  .connected-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--muted);
-    font-family: 'DM Mono', monospace;
-  }
-  .dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--muted);
-    transition: background 0.3s;
-  }
+  .connected-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
   .dot.live { background: var(--success); box-shadow: 0 0 6px var(--success); }
-
-  /* ── Main card ── */
-  .card {
-    width: 100%;
-    max-width: 520px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    overflow: hidden;
-    margin-bottom: 16px;
-  }
-
-  /* ── Now playing ── */
-  .now-playing {
-    padding: 28px 28px 24px;
-    border-bottom: 1px solid var(--border);
-  }
-  .np-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 16px;
-  }
-  .np-art {
-    width: 72px; height: 72px;
-    border-radius: 12px;
-    background: var(--surface3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 16px;
-    position: relative;
-    overflow: hidden;
-  }
+  .card { width: 100%; max-width: 520px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-bottom: 16px; }
+  .now-playing { padding: 28px 28px 24px; border-bottom: 1px solid var(--border); }
+  .np-label { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 16px; }
+  .np-art { width: 72px; height: 72px; border-radius: 12px; background: var(--surface3); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; position: relative; overflow: hidden; }
   .np-art svg { opacity: 0.4; }
-  .np-art.playing::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 12px;
-    border: 1.5px solid var(--accent);
-    animation: pulse-border 2s infinite;
-  }
-  @keyframes pulse-border {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-  .np-title {
-    font-size: 20px;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .np-subtitle {
-    font-size: 13px;
-    color: var(--muted);
-    font-family: 'DM Mono', monospace;
-    margin-bottom: 20px;
-  }
-
-  /* ── Progress bar ── */
-  .progress-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 24px;
-  }
-  .progress-time {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    min-width: 36px;
-  }
-  .progress-bar {
-    flex: 1;
-    height: 3px;
-    background: var(--surface3);
-    border-radius: 99px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 99px;
-    width: 0%;
-    transition: width 0.5s linear;
-  }
-
-  /* ── Controls ── */
-  .controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-  }
-  .btn-ctrl {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: color 0.2s, background 0.2s;
-    padding: 8px;
-  }
+  .np-art.playing::after { content: ''; position: absolute; inset: 0; border-radius: 12px; border: 1.5px solid var(--accent); animation: pulse-border 2s infinite; }
+  @keyframes pulse-border { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .np-title { font-size: 20px; font-weight: 500; color: var(--text); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np-subtitle { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 20px; }
+  .progress-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .progress-time { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); min-width: 36px; }
+  .progress-bar { flex: 1; height: 3px; background: var(--surface3); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; width: 0%; transition: width 0.3s linear; }
+  .controls { display: flex; align-items: center; justify-content: center; gap: 16px; }
+  .btn-ctrl { background: none; border: none; cursor: pointer; color: var(--muted); display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: color 0.2s, background 0.2s; padding: 8px; }
   .btn-ctrl:hover { color: var(--text); background: var(--surface2); }
   .btn-ctrl:disabled { opacity: 0.25; cursor: default; }
-  .btn-play {
-    width: 52px; height: 52px;
-    background: var(--accent);
-    color: #fff;
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s, transform 0.1s;
-  }
+  .btn-play { width: 52px; height: 52px; background: var(--accent); color: #fff; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s, transform 0.1s; }
   .btn-play:hover { background: var(--accent2); }
   .btn-play:active { transform: scale(0.95); }
   .btn-play:disabled { opacity: 0.3; cursor: default; }
-
-  /* ── Playlist ── */
-  .playlist-section {
-    padding: 0;
-  }
-  .playlist-header {
-    padding: 16px 28px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .playlist-title {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-  .playlist-count {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .playlist-list {
-    list-style: none;
-    max-height: 260px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--surface3) transparent;
-  }
-  .playlist-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 28px;
-    cursor: pointer;
-    transition: background 0.15s;
-    border-radius: 0;
-  }
+  .playlist-section { padding: 0; }
+  .playlist-header { padding: 16px 28px 12px; display: flex; align-items: center; justify-content: space-between; }
+  .playlist-title { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+  .playlist-count { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+  .playlist-list { list-style: none; max-height: 260px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--surface3) transparent; }
+  .playlist-item { display: flex; align-items: center; gap: 12px; padding: 10px 28px; cursor: pointer; transition: background 0.15s; }
   .playlist-item:hover { background: var(--surface2); }
   .playlist-item.active { background: var(--surface3); }
   .playlist-item.active .track-name { color: var(--accent2); }
-  .track-num {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    min-width: 20px;
-    text-align: right;
-  }
-  .track-name {
-    flex: 1;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .track-del {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--muted);
-    opacity: 0;
-    display: flex;
-    padding: 4px;
-    border-radius: 4px;
-    transition: opacity 0.2s, color 0.2s;
-  }
+  .track-num { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); min-width: 20px; text-align: right; }
+  .track-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-del { background: none; border: none; cursor: pointer; color: var(--muted); opacity: 0; display: flex; padding: 4px; border-radius: 4px; transition: opacity 0.2s, color 0.2s; }
   .playlist-item:hover .track-del { opacity: 1; }
   .track-del:hover { color: var(--danger); }
-
-  /* ── Upload ── */
-  .upload-section {
-    width: 100%;
-    max-width: 520px;
-  }
-  .upload-zone {
-    border: 1.5px dashed var(--surface3);
-    border-radius: 16px;
-    padding: 28px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    position: relative;
-  }
+  .upload-section { width: 100%; max-width: 520px; }
+  .upload-zone { border: 1.5px dashed var(--surface3); border-radius: 16px; padding: 28px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; position: relative; }
   .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(124,106,247,0.04); }
-  .upload-zone input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    width: 100%;
-    height: 100%;
-  }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
   .upload-icon { color: var(--muted); margin-bottom: 10px; }
   .upload-text { font-size: 14px; color: var(--muted); }
   .upload-text strong { color: var(--accent2); font-weight: 500; }
   .upload-hint { font-size: 12px; color: var(--surface3); margin-top: 4px; font-family: 'DM Mono', monospace; }
-
-  /* ── Status bar ── */
-  .status-bar {
-    width: 100%;
-    max-width: 520px;
-    margin-top: 8px;
-    padding: 10px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
+  .status-bar { width: 100%; max-width: 520px; margin-top: 8px; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
   .status-bar.uploading { color: var(--accent2); }
   .status-bar.error { color: var(--danger); }
-
-  /* ── Role selector ── */
-  .role-screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    z-index: 100;
-    padding: 24px;
-  }
-  .role-logo {
-    font-family: 'DM Mono', monospace;
-    font-size: 28px;
-    margin-bottom: 8px;
-  }
+  .role-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 100; padding: 24px; }
+  .role-logo { font-family: 'DM Mono', monospace; font-size: 28px; margin-bottom: 8px; }
   .role-logo span { color: var(--accent); }
-  .role-subtitle {
-    font-size: 14px;
-    color: var(--muted);
-    margin-bottom: 24px;
-    text-align: center;
-  }
-  .role-btn {
-    width: 100%;
-    max-width: 320px;
-    padding: 18px 24px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.2s, border-color 0.2s;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .role-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 24px; text-align: center; }
+  .role-btn { width: 100%; max-width: 320px; padding: 18px 24px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; cursor: pointer; text-align: left; transition: background 0.2s, border-color 0.2s; display: flex; flex-direction: column; gap: 4px; }
   .role-btn:hover { background: var(--surface2); border-color: var(--accent); }
   .role-btn small { font-size: 12px; color: var(--muted); font-weight: 400; }
   .role-btn.host { border-color: rgba(124,106,247,0.4); }
-
-  /* ── Empty state ── */
-  .empty-state {
-    padding: 32px 28px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
-  }
+  .empty-state { padding: 32px 28px; text-align: center; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
 
-<!-- Role selector -->
 <div class="role-screen" id="roleScreen">
   <div class="role-logo">Sync<span>Play</span></div>
   <div class="role-subtitle">Música sincronizada para todos</div>
@@ -390,9 +92,7 @@
   </button>
 </div>
 
-<!-- Main app (hidden until role chosen) -->
-<div id="app" style="display:none; width:100%; max-width:520px; display:none; flex-direction:column; align-items:center; gap:16px;">
-
+<div id="app" style="display:none; width:100%; max-width:520px; flex-direction:column; align-items:center; gap:16px;">
   <header>
     <div class="logo">Sync<span>Play</span></div>
     <div class="connected-badge">
@@ -401,7 +101,6 @@
     </div>
   </header>
 
-  <!-- Player card -->
   <div class="card">
     <div class="now-playing">
       <div class="np-label">reproduciendo ahora</div>
@@ -428,8 +127,6 @@
         </button>
       </div>
     </div>
-
-    <!-- Playlist -->
     <div class="playlist-section">
       <div class="playlist-header">
         <span class="playlist-title">lista de reproducción</span>
@@ -441,15 +138,14 @@
     </div>
   </div>
 
-  <!-- Upload zone (host only) -->
   <div class="upload-section" id="uploadSection" style="display:none">
     <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg" multiple onchange="uploadFiles(this.files)">
+      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3" multiple onchange="uploadFiles(this.files)">
       <div class="upload-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="color:var(--muted)"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
       </div>
       <div class="upload-text"><strong>Elegí archivos MP3</strong> o arrastralos acá</div>
-      <div class="upload-hint">MP3 · WAV · OGG · hasta 50 MB por archivo</div>
+      <div class="upload-hint">Solo MP3 · hasta 50 MB por archivo</div>
     </div>
   </div>
 
@@ -457,12 +153,10 @@
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
     <span id="statusText">Esperando canciones…</span>
   </div>
-
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-// ── Role ──────────────────────────────────────────────────────────────────────
 let role = null;
 
 function chooseRole(r) {
@@ -471,78 +165,29 @@ function chooseRole(r) {
   const app = document.getElementById('app');
   app.style.display = 'flex';
   if (role === 'host') document.getElementById('uploadSection').style.display = 'block';
-  initAudio();
   initSocket();
 }
 
-// ── AudioContext ──────────────────────────────────────────────────────────────
-let actx = null;
-let cache = {};
-let currentSource = null;
-let startedAtCtx = null;
-let tickInterval = null;
-let goTimeout = null;
-let currentDuration = 0;
+// ── Clock sync ────────────────────────────────────────────────────────────────
+let serverTimeDelta = 0;
+let rttSamples = [];
 
-function initAudio() {
-  actx = new (window.AudioContext || window.webkitAudioContext)();
+function measureRTT() {
+  const t0 = Date.now();
+  socket.emit('ping_time', t0, (serverNow) => {
+    const rtt = Date.now() - t0;
+    const offset = (Date.now() - rtt / 2) - serverNow;
+    rttSamples.push(offset);
+    if (rttSamples.length > 10) rttSamples.shift();
+    const sorted = [...rttSamples].sort((a, b) => a - b);
+    serverTimeDelta = sorted[Math.floor(sorted.length / 2)];
+  });
 }
 
-function resumeCtx() {
-  if (actx && actx.state === 'suspended') actx.resume();
-}
-
-async function fetchAndDecode(trackId) {
-  if (cache[trackId]) return cache[trackId];
-  setStatusText('Descargando audio…', 'uploading');
-  const res = await fetch(`/track/${trackId}`);
-  const arrayBuffer = await res.arrayBuffer();
-  setStatusText('Decodificando…', 'uploading');
-  const audioBuffer = await actx.decodeAudioData(arrayBuffer);
-  cache[trackId] = audioBuffer;
-  return audioBuffer;
-}
-
-function prefetchNext() {
-  if (!currentState) return;
-  const nextIndex = currentState.currentIndex + 1;
-  if (nextIndex < currentState.playlist.length) {
-    const nextId = currentState.playlist[nextIndex].id;
-    if (!cache[nextId]) fetchAndDecode(nextId).catch(() => {});
-  }
-}
-
-function stopCurrent() {
-  if (currentSource) {
-    try { currentSource.stop(); } catch(_) {}
-    currentSource.disconnect();
-    currentSource = null;
-  }
-  clearInterval(tickInterval);
-  clearTimeout(goTimeout);
-  startedAtCtx = null;
-}
-
-function playBufferAt(buffer, offsetSeconds, ctxStartTime) {
-  stopCurrent();
-  resumeCtx();
-  const source = actx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(actx.destination);
-  currentDuration = buffer.duration;
-  source.start(ctxStartTime, offsetSeconds);
-  startedAtCtx = ctxStartTime - offsetSeconds;
-  source.onended = () => {
-    if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
-  };
-  currentSource = source;
-  clearInterval(tickInterval);
-  tickInterval = setInterval(updateProgress, 200);
-}
+function getServerNow() { return Date.now() - serverTimeDelta; }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
 let socket;
-let serverTimeDelta = 0;
 
 function initSocket() {
   socket = io();
@@ -557,7 +202,6 @@ function initSocket() {
     applyState(s);
   });
   socket.on('prepare', ({ trackId, resumeFrom }) => {
-    resumeCtx();
     preloadAndReady(trackId, resumeFrom);
   });
   socket.on('go', ({ startAt }) => {
@@ -565,43 +209,103 @@ function initSocket() {
   });
 }
 
-function cmd(event, payload) {
-  if (role !== 'host') return;
-  socket.emit(event, payload);
-}
-
+function cmd(ev, payload) { if (role === 'host') socket.emit(ev, payload); }
 function setConn(ok) {
   document.getElementById('connDot').className = 'dot' + (ok ? ' live' : '');
   document.getElementById('connLabel').textContent = ok ? 'en vivo' : 'sin conexión';
 }
 
-// ── State → UI ────────────────────────────────────────────────────────────────
+// ── Audio ─────────────────────────────────────────────────────────────────────
+let audio = new Audio();
+let tickInterval = null;
+let goTimeout = null;
+let prepared = false;
 let currentState = null;
+
+audio.addEventListener('ended', () => {
+  if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
+});
 
 function applyState(s) {
   currentState = s;
   renderPlaylist(s);
   renderNowPlaying(s);
   if (!s.playing) {
-    stopCurrent();
+    audio.pause();
+    clearInterval(tickInterval);
+    clearTimeout(goTimeout);
+    prepared = false;
     const track = s.playlist[s.currentIndex];
-    if (track && !cache[track.id]) fetchAndDecode(track.id).catch(() => {});
-    setTimeout(prefetchNext, 500);
+    if (track) {
+      const url = `/track/${track.id}`;
+      if (audio.src !== location.origin + url) {
+        audio.src = url;
+        audio.load();
+      }
+      audio.currentTime = s.pausedAt || 0;
+    }
     updateProgress();
     setStatus(s);
   }
 }
 
+// ── Preload ───────────────────────────────────────────────────────────────────
+function preloadAndReady(trackId, resumeFrom) {
+  setStatusTxt('Cargando…', 'uploading');
+  prepared = false;
+
+  const url = `/track/${trackId}`;
+  if (audio.src !== location.origin + url) {
+    audio.src = url;
+    audio.load();
+  }
+  audio.currentTime = resumeFrom || 0;
+
+  const report = () => {
+    if (prepared) return;
+    prepared = true;
+    socket.emit('ready', { trackId });
+    setStatusTxt('Listo, esperando…', 'uploading');
+  };
+
+  // Report ready as soon as we have enough data to play
+  if (audio.readyState >= 3) {
+    report();
+  } else {
+    audio.addEventListener('canplaythrough', report, { once: true });
+    // iOS fallback: report after 4s regardless
+    setTimeout(report, 4000);
+  }
+}
+
+// ── Scheduled play ────────────────────────────────────────────────────────────
+function schedulePlay(startAtServerMs) {
+  clearTimeout(goTimeout);
+  const msUntilStart = startAtServerMs - getServerNow();
+  if (msUntilStart > 0) {
+    goTimeout = setTimeout(doPlay, msUntilStart);
+  } else {
+    doPlay();
+  }
+}
+
+function doPlay() {
+  if (!currentState) return;
+  // Seek to correct position accounting for time elapsed since startedAt
+  const elapsed = (getServerNow() - currentState.startedAt) / 1000;
+  const target = Math.max(0, elapsed);
+  if (Math.abs(audio.currentTime - target) > 0.2) audio.currentTime = target;
+  audio.play().catch(() => {});
+  clearInterval(tickInterval);
+  tickInterval = setInterval(updateProgress, 300);
+  setStatus(currentState);
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
 function renderPlaylist(s) {
   const ul = document.getElementById('playlistEl');
-  const count = document.getElementById('plCount');
-  count.textContent = s.playlist.length + ' canción' + (s.playlist.length !== 1 ? 'es' : '');
-
-  if (s.playlist.length === 0) {
-    ul.innerHTML = '<li class="empty-state">Subí canciones para empezar</li>';
-    return;
-  }
-
+  document.getElementById('plCount').textContent = s.playlist.length + ' canción' + (s.playlist.length !== 1 ? 'es' : '');
+  if (!s.playlist.length) { ul.innerHTML = '<li class="empty-state">Subí canciones para empezar</li>'; return; }
   ul.innerHTML = '';
   s.playlist.forEach((t, i) => {
     const li = document.createElement('li');
@@ -609,14 +313,9 @@ function renderPlaylist(s) {
     li.innerHTML = `
       <span class="track-num">${i === s.currentIndex ? '▶' : (i + 1)}</span>
       <span class="track-name">${escHtml(t.name)}</span>
-      ${role === 'host' ? `<button class="track-del" onclick="deleteTrack(event,'${t.id}')" title="Eliminar">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-      </button>` : ''}
+      ${role === 'host' ? `<button class="track-del" onclick="deleteTrack(event,'${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}
     `;
-    li.addEventListener('click', (e) => {
-      if (e.target.closest('.track-del')) return;
-      cmd('select', i);
-    });
+    li.addEventListener('click', (e) => { if (!e.target.closest('.track-del')) cmd('select', i); });
     ul.appendChild(li);
   });
 }
@@ -624,159 +323,70 @@ function renderPlaylist(s) {
 function renderNowPlaying(s) {
   const track = s.playlist[s.currentIndex];
   document.getElementById('npTitle').textContent = track ? track.name : 'Sin canciones';
-  document.getElementById('npSubtitle').textContent = track
-    ? `Pista ${s.currentIndex + 1} de ${s.playlist.length}`
-    : '—';
+  document.getElementById('npSubtitle').textContent = track ? `Pista ${s.currentIndex + 1} de ${s.playlist.length}` : '—';
   document.getElementById('npArt').className = 'np-art' + (s.playing ? ' playing' : '');
-
-  const playBtn = document.getElementById('btnPlay');
-  playBtn.disabled = !track;
+  document.getElementById('btnPlay').disabled = !track;
   document.getElementById('iconPlay').style.display = s.playing ? 'none' : 'block';
   document.getElementById('iconPause').style.display = s.playing ? 'block' : 'none';
-
   document.getElementById('btnPrev').disabled = role !== 'host' || s.currentIndex <= 0;
   document.getElementById('btnNext').disabled = role !== 'host' || s.currentIndex >= s.playlist.length - 1;
-
   setStatus(s);
 }
 
-function setStatusText(text, cls) {
-  const bar = document.getElementById('statusBar');
-  const txt = document.getElementById('statusText');
-  bar.className = 'status-bar' + (cls ? ' ' + cls : '');
-  txt.textContent = text;
+function setStatusTxt(text, cls) {
+  document.getElementById('statusBar').className = 'status-bar' + (cls ? ' ' + cls : '');
+  document.getElementById('statusText').textContent = text;
 }
 
 function setStatus(s) {
-  if (!s.playlist.length) {
-    setStatusText('Esperando canciones…', '');
-  } else if (!s.playing) {
-    setStatusText('Pausado', '');
-  } else {
-    setStatusText(role === 'host' ? 'Reproduciendo para todos ✦' : 'Sincronizado con el organizador ✦', '');
-  }
-}
-
-// ── Clock sync ────────────────────────────────────────────────────────────────
-let rttSamples = [];
-function measureRTT() {
-  const t0 = Date.now();
-  socket.emit('ping_time', t0, (serverNow) => {
-    const rtt = Date.now() - t0;
-    const offset = (Date.now() - rtt / 2) - serverNow;
-    rttSamples.push(offset);
-    if (rttSamples.length > 10) rttSamples.shift();
-    const sorted = [...rttSamples].sort((a, b) => a - b);
-    serverTimeDelta = sorted[Math.floor(sorted.length / 2)];
-  });
-}
-
-function getServerNow() {
-  return Date.now() - serverTimeDelta;
-}
-
-// ── Preload & ready handshake ──────────────────────────────────────────────────
-async function preloadAndReady(trackId, resumeFrom) {
-  try {
-    await fetchAndDecode(trackId);
-    socket.emit('ready', { trackId });
-    setStatusText('Listo, esperando otros…', 'uploading');
-    setTimeout(prefetchNext, 300);
-  } catch(e) {
-    console.error('preload failed', e);
-    socket.emit('ready', { trackId }); // report ready anyway so we don't block
-  }
-}
-
-// ── Scheduled playback ────────────────────────────────────────────────────────
-function schedulePlay(startAtServerMs) {
-  if (!currentState) return;
-  const trackId = currentState.playlist[currentState.currentIndex]?.id;
-  const buffer = cache[trackId];
-  if (!buffer) return;
-
-  // Convert server timestamp to AudioContext time
-  const msUntilStart = startAtServerMs - getServerNow();
-  const resumeFrom = currentState.pausedAt || 0;
-
-  // ctxStartTime = the AudioContext time at which position=0 of the track plays
-  // We want position=resumeFrom to play at ctxStartTime + msUntilStart/1000
-  const ctxPlayTime = actx.currentTime + Math.max(0, msUntilStart / 1000);
-  const ctxStartTime = ctxPlayTime - resumeFrom;
-
-  playBufferAt(buffer, resumeFrom, ctxPlayTime);
-  setStatus(currentState);
+  if (!s || !s.playlist.length) setStatusTxt('Esperando canciones…', '');
+  else if (!s.playing) setStatusTxt('Pausado', '');
+  else setStatusTxt(role === 'host' ? 'Reproduciendo para todos ✦' : 'Sincronizado ✦', '');
 }
 
 function updateProgress() {
-  const cur = startedAtCtx !== null ? actx.currentTime - startedAtCtx : 0;
-  const dur = currentDuration || 0;
-  document.getElementById('timeElapsed').textContent = fmt(Math.max(0, cur));
+  const cur = audio.currentTime, dur = audio.duration || 0;
+  document.getElementById('timeElapsed').textContent = fmt(cur);
   document.getElementById('timeDuration').textContent = fmt(dur);
-  document.getElementById('progressFill').style.width = dur ? (Math.max(0, cur) / dur * 100) + '%' : '0%';
+  document.getElementById('progressFill').style.width = dur ? (cur / dur * 100) + '%' : '0%';
 }
 
 function fmt(s) {
   if (!isFinite(s)) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60).toString().padStart(2, '0');
-  return `${m}:${sec}`;
+  return Math.floor(s / 60) + ':' + Math.floor(s % 60).toString().padStart(2, '0');
 }
 
-// ── Controls ──────────────────────────────────────────────────────────────────
 function togglePlay() {
   if (role !== 'host') return;
   if (currentState?.playing) cmd('pause');
   else cmd('play');
 }
 
-function deleteTrack(e, id) {
-  e.stopPropagation();
-  fetch('/track/' + id, { method: 'DELETE' });
-}
+function deleteTrack(e, id) { e.stopPropagation(); fetch('/track/' + id, { method: 'DELETE' }); }
 
-// ── Upload ────────────────────────────────────────────────────────────────────
 function uploadFiles(files) {
   if (!files.length) return;
-  const bar = document.getElementById('statusBar');
-  const txt = document.getElementById('statusText');
-  bar.className = 'status-bar uploading';
-  txt.textContent = `Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`;
-
+  // Validate MP3 only
+  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.endsWith('.mp3'));
+  if (invalid.length) { setStatusTxt('Solo se aceptan archivos MP3', 'error'); return; }
+  setStatusTxt(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`, 'uploading');
   const fd = new FormData();
   Array.from(files).forEach(f => fd.append('tracks', f));
-
   fetch('/upload', { method: 'POST', body: fd })
     .then(r => r.json())
-    .then(() => {
-      bar.className = 'status-bar';
-      txt.textContent = 'Archivos subidos ✓';
-      setTimeout(() => setStatus(currentState || {}), 2000);
-    })
-    .catch(() => {
-      bar.className = 'status-bar error';
-      txt.textContent = 'Error al subir. Intentá de nuevo.';
-    });
-
+    .then(() => { setStatusTxt('Subido ✓', ''); setTimeout(() => setStatus(currentState), 2000); })
+    .catch(() => setStatusTxt('Error al subir', 'error'));
   document.getElementById('fileInput').value = '';
 }
 
-// Drag & drop
 const zone = document.getElementById('uploadZone');
 if (zone) {
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('drag');
-    uploadFiles(e.dataTransfer.files);
-  });
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); uploadFiles(e.dataTransfer.files); });
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 </script>
 </body>
 </html>
