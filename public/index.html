@@ -664,14 +664,19 @@ function syncAudio(s) {
     clearInterval(tickInterval);
     tickInterval = setInterval(updateProgress, 500);
 
-    // Re-sync every 2 seconds aggressively
+    // Re-sync every 2 seconds - soft adjustment to avoid cuts
     clearInterval(syncCheckInterval);
     syncCheckInterval = setInterval(() => {
       if (!currentState?.playing || !audioReady) return;
       const target = getTargetPosition(currentState);
       const diff = audio.currentTime - target;
-      if (Math.abs(diff) > 0.3) {
+      if (Math.abs(diff) > 1.0) {
+        // Very far off — hard seek
         audio.currentTime = target;
+      } else if (Math.abs(diff) > 0.1) {
+        // Slightly off — adjust speed gently, no cut
+        audio.playbackRate = diff > 0 ? 0.95 : 1.05;
+        setTimeout(() => { audio.playbackRate = 1.0; }, 1000);
       }
     }, 2000);
 
