@@ -470,10 +470,74 @@ function chooseRole(r) {
   document.getElementById('roleScreen').style.display = 'none';
   const app = document.getElementById('app');
   app.style.display = 'flex';
-  if (role === 'host') {
-    document.getElementById('uploadSection').style.display = 'block';
-  }
+  if (role === 'host') document.getElementById('uploadSection').style.display = 'block';
+  initAudio();
   initSocket();
+}
+
+// ── AudioContext ──────────────────────────────────────────────────────────────
+let actx = null;
+let cache = {};
+let currentSource = null;
+let startedAtCtx = null;
+let tickInterval = null;
+let goTimeout = null;
+let currentDuration = 0;
+
+function initAudio() {
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function resumeCtx() {
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+
+async function fetchAndDecode(trackId) {
+  if (cache[trackId]) return cache[trackId];
+  setStatusText('Descargando audio…', 'uploading');
+  const res = await fetch(`/track/${trackId}`);
+  const arrayBuffer = await res.arrayBuffer();
+  setStatusText('Decodificando…', 'uploading');
+  const audioBuffer = await actx.decodeAudioData(arrayBuffer);
+  cache[trackId] = audioBuffer;
+  return audioBuffer;
+}
+
+function prefetchNext() {
+  if (!currentState) return;
+  const nextIndex = currentState.currentIndex + 1;
+  if (nextIndex < currentState.playlist.length) {
+    const nextId = currentState.playlist[nextIndex].id;
+    if (!cache[nextId]) fetchAndDecode(nextId).catch(() => {});
+  }
+}
+
+function stopCurrent() {
+  if (currentSource) {
+    try { currentSource.stop(); } catch(_) {}
+    currentSource.disconnect();
+    currentSource = null;
+  }
+  clearInterval(tickInterval);
+  clearTimeout(goTimeout);
+  startedAtCtx = null;
+}
+
+function playBufferAt(buffer, offsetSeconds, ctxStartTime) {
+  stopCurrent();
+  resumeCtx();
+  const source = actx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(actx.destination);
+  currentDuration = buffer.duration;
+  source.start(ctxStartTime, offsetSeconds);
+  startedAtCtx = ctxStartTime - offsetSeconds;
+  source.onended = () => {
+    if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
+  };
+  currentSource = source;
+  clearInterval(tickInterval);
+  tickInterval = setInterval(updateProgress, 200);
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
@@ -482,10 +546,9 @@ let serverTimeDelta = 0;
 
 function initSocket() {
   socket = io();
-
   socket.on('connect', () => {
     setConn(true);
-    for (let i = 0; i < 6; i++) setTimeout(measureRTT, i * 300);
+    for (let i = 0; i < 6; i++) setTimeout(measureRTT, i * 400);
     setInterval(measureRTT, 8000);
   });
   socket.on('disconnect', () => setConn(false));
@@ -493,18 +556,12 @@ function initSocket() {
     serverTimeDelta = Date.now() - s.serverTime;
     applyState(s);
   });
-
-  // Server asks us to prepare (preload audio)
   socket.on('prepare', ({ trackId, resumeFrom }) => {
-    setStatusText('Cargando audio…', 'uploading');
+    resumeCtx();
     preloadAndReady(trackId, resumeFrom);
   });
-
-  // Server says GO at a specific server timestamp
   socket.on('go', ({ startAt }) => {
-    const msUntilStart = startAt - getServerNow();
-    setStatusText('Arrancando…', '');
-    schedulePlay(msUntilStart);
+    schedulePlay(startAt);
   });
 }
 
@@ -520,43 +577,18 @@ function setConn(ok) {
 
 // ── State → UI ────────────────────────────────────────────────────────────────
 let currentState = null;
-let audio = new Audio();
-let tickInterval = null;
-let syncCheckInterval = null;
-let audioReady = false;
-let goTimeout = null;
-
-audio.addEventListener('ended', () => {
-  if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
-});
 
 function applyState(s) {
   currentState = s;
   renderPlaylist(s);
   renderNowPlaying(s);
-  // Only sync audio from state if NOT in the middle of a prepare/go sequence
   if (!s.playing) {
-    audio.pause();
-    clearInterval(tickInterval);
-    clearInterval(syncCheckInterval);
-    clearTimeout(goTimeout);
+    stopCurrent();
     const track = s.playlist[s.currentIndex];
-    if (track) {
-      const cachedUrl = blobUrls[track.id];
-      const url = cachedUrl || `/track/${track.id}`;
-      if (audio.src !== url && audio.src !== location.origin + `/track/${track.id}`) {
-        audio.src = url;
-        audioReady = !!cachedUrl;
-        audio.load();
-        if (!cachedUrl) audio.addEventListener('canplay', () => { audioReady = true; }, { once: true });
-      }
-      audio.currentTime = s.pausedAt || 0;
-      // Prefetch current track if not cached
-      if (!cachedUrl) fetchTrackBlob(track.id).catch(() => {});
-    }
+    if (track && !cache[track.id]) fetchAndDecode(track.id).catch(() => {});
+    setTimeout(prefetchNext, 500);
     updateProgress();
-    // Always prefetch next track when paused
-    setTimeout(prefetchNext, 1000);
+    setStatus(s);
   }
 }
 
@@ -644,113 +676,44 @@ function getServerNow() {
 }
 
 // ── Preload & ready handshake ──────────────────────────────────────────────────
-// We fetch the entire file into a blob URL so playback is instant and gapless
-let blobUrls = {}; // trackId → blob URL
-let prefetchQueue = []; // track ids to prefetch in background
-
-async function fetchTrackBlob(trackId) {
-  if (blobUrls[trackId]) return blobUrls[trackId];
-  const res = await fetch(`/track/${trackId}`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  blobUrls[trackId] = url;
-  return url;
-}
-
-function prefetchNext() {
-  if (!currentState) return;
-  const nextIndex = currentState.currentIndex + 1;
-  if (nextIndex < currentState.playlist.length) {
-    const nextId = currentState.playlist[nextIndex].id;
-    if (!blobUrls[nextId]) {
-      fetchTrackBlob(nextId).catch(() => {});
-    }
-  }
-}
-
 async function preloadAndReady(trackId, resumeFrom) {
-  const track = currentState?.playlist.find(t => t.id === trackId);
-  if (!track) return;
-
-  setStatusText('Descargando audio…', 'uploading');
-
   try {
-    const url = await fetchTrackBlob(trackId);
-    if (audio.src !== url) {
-      audio.src = url;
-      audio.load();
-    }
-    audio.currentTime = resumeFrom || 0;
-    audioReady = true;
+    await fetchAndDecode(trackId);
     socket.emit('ready', { trackId });
     setStatusText('Listo, esperando otros…', 'uploading');
-    // Start prefetching next track in background
-    setTimeout(prefetchNext, 500);
-  } catch (e) {
-    // Fallback to streaming if fetch fails
-    const url = `/track/${trackId}`;
-    if (audio.src !== location.origin + url) {
-      audio.src = url;
-      audio.load();
-    }
-    const onReady = () => {
-      audioReady = true;
-      socket.emit('ready', { trackId });
-      setStatusText('Listo, esperando otros…', 'uploading');
-    };
-    if (audio.readyState >= 3) {
-      onReady();
-    } else {
-      audio.addEventListener('canplaythrough', onReady, { once: true });
-      setTimeout(() => { if (!audioReady) onReady(); }, 4000);
-    }
+    setTimeout(prefetchNext, 300);
+  } catch(e) {
+    console.error('preload failed', e);
+    socket.emit('ready', { trackId }); // report ready anyway so we don't block
   }
 }
 
 // ── Scheduled playback ────────────────────────────────────────────────────────
-function schedulePlay(msUntilStart) {
-  clearTimeout(goTimeout);
-  clearInterval(syncCheckInterval);
-
-  if (msUntilStart > 0) {
-    goTimeout = setTimeout(() => startPlayback(), msUntilStart);
-  } else {
-    // Already past start time — seek to correct position and play
-    startPlayback();
-  }
-}
-
-function startPlayback() {
+function schedulePlay(startAtServerMs) {
   if (!currentState) return;
-  const target = (getServerNow() - currentState.startedAt) / 1000;
-  audio.currentTime = Math.max(0, target);
-  audio.play().catch(() => {});
+  const trackId = currentState.playlist[currentState.currentIndex]?.id;
+  const buffer = cache[trackId];
+  if (!buffer) return;
 
-  clearInterval(tickInterval);
-  tickInterval = setInterval(updateProgress, 500);
+  // Convert server timestamp to AudioContext time
+  const msUntilStart = startAtServerMs - getServerNow();
+  const resumeFrom = currentState.pausedAt || 0;
 
-  // Gentle drift correction every 3s
-  clearInterval(syncCheckInterval);
-  syncCheckInterval = setInterval(() => {
-    if (!currentState?.playing || !audioReady) return;
-    const target = (getServerNow() - currentState.startedAt) / 1000;
-    const diff = audio.currentTime - target;
-    if (Math.abs(diff) > 1.5) {
-      audio.currentTime = target;
-    } else if (Math.abs(diff) > 0.15) {
-      audio.playbackRate = diff > 0 ? 0.94 : 1.06;
-      setTimeout(() => { audio.playbackRate = 1.0; }, 800);
-    }
-  }, 3000);
+  // ctxStartTime = the AudioContext time at which position=0 of the track plays
+  // We want position=resumeFrom to play at ctxStartTime + msUntilStart/1000
+  const ctxPlayTime = actx.currentTime + Math.max(0, msUntilStart / 1000);
+  const ctxStartTime = ctxPlayTime - resumeFrom;
+
+  playBufferAt(buffer, resumeFrom, ctxPlayTime);
+  setStatus(currentState);
 }
 
 function updateProgress() {
-  if (!audio.src) return;
-  const cur = audio.currentTime;
-  const dur = audio.duration || 0;
-  document.getElementById('timeElapsed').textContent = fmt(cur);
+  const cur = startedAtCtx !== null ? actx.currentTime - startedAtCtx : 0;
+  const dur = currentDuration || 0;
+  document.getElementById('timeElapsed').textContent = fmt(Math.max(0, cur));
   document.getElementById('timeDuration').textContent = fmt(dur);
-  document.getElementById('progressFill').style.width = dur ? (cur / dur * 100) + '%' : '0%';
+  document.getElementById('progressFill').style.width = dur ? (Math.max(0, cur) / dur * 100) + '%' : '0%';
 }
 
 function fmt(s) {
