@@ -97,8 +97,10 @@ io.on("connection", (socket) => {
   socket.on("play", () => {
     if (!currentTrack()) return;
     const resumeFrom = state.pausedAt || 0;
+    // Delay start by 1.5s so all devices can buffer
+    const startDelay = 1500;
     state.playing = true;
-    state.startedAt = Date.now() - resumeFrom * 1000;
+    state.startedAt = Date.now() + startDelay - resumeFrom * 1000;
     state.pausedAt = null;
     broadcastState();
   });
