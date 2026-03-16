@@ -153,6 +153,10 @@
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
     <span id="statusText">Esperando canciones…</span>
   </div>
+
+  <button id="btnReady" onclick="userTapReady()" style="display:none; width:100%; max-width:520px; padding:18px; border-radius:14px; border:none; background:var(--accent); color:white; font-family:'DM Sans',sans-serif; font-size:16px; font-weight:500; cursor:pointer;">
+    Tocar para escuchar 🎵
+  </button>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -165,6 +169,7 @@ function chooseRole(r) {
   const app = document.getElementById('app');
   app.style.display = 'flex';
   if (role === 'host') document.getElementById('uploadSection').style.display = 'block';
+  unlockAudio(); // unlock on user tap of role button
   initSocket();
 }
 
@@ -205,7 +210,19 @@ function initSocket() {
     preloadAndReady(trackId, resumeFrom);
   });
   socket.on('go', ({ startAt }) => {
-    schedulePlay(startAt);
+    if (role === 'host') {
+      unlockAudio();
+      schedulePlay(startAt);
+    } else {
+      // For guests: if audio is unlocked play directly, otherwise show tap button
+      if (audioUnlocked) {
+        schedulePlay(startAt);
+      } else {
+        pendingPlayAt = startAt;
+        document.getElementById('btnReady').style.display = 'block';
+        setStatusTxt('Tocá el botón para escuchar', 'uploading');
+      }
+    }
   });
 }
 
@@ -221,6 +238,24 @@ let tickInterval = null;
 let goTimeout = null;
 let prepared = false;
 let currentState = null;
+let pendingPlayAt = null; // server ms timestamp to play at, waiting for user tap
+let audioUnlocked = false;
+
+// Unlock audio on first user interaction (required by iOS)
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audio.play().then(() => { audio.pause(); audio.currentTime = 0; }).catch(() => {});
+  audioUnlocked = true;
+}
+
+function userTapReady() {
+  unlockAudio();
+  document.getElementById('btnReady').style.display = 'none';
+  if (pendingPlayAt !== null) {
+    schedulePlay(pendingPlayAt);
+    pendingPlayAt = null;
+  }
+}
 
 audio.addEventListener('ended', () => {
   if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
