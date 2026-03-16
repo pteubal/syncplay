@@ -90,6 +90,10 @@ app.delete("/track/:id", (req, res) => {
 io.on("connection", (socket) => {
   socket.emit("state", sanitizedState());
 
+  socket.on("ping_time", (clientT0, callback) => {
+    callback(Date.now());
+  });
+
   socket.on("play", () => {
     if (!currentTrack()) return;
     const resumeFrom = state.pausedAt || 0;
