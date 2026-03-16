@@ -46,14 +46,12 @@
   .playlist-title { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
   .playlist-count { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
   .playlist-list { list-style: none; max-height: 260px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--surface3) transparent; }
-  .playlist-item { display: flex; align-items: center; gap: 12px; padding: 10px 28px; cursor: pointer; transition: background 0.15s; position: relative; }
+  .playlist-item { display: flex; align-items: center; gap: 12px; padding: 10px 28px; cursor: pointer; transition: background 0.15s; }
   .playlist-item:hover { background: var(--surface2); }
-  .playlist-item:hover .track-play-hint { opacity: 1; }
   .playlist-item.active { background: var(--surface3); }
   .playlist-item.active .track-name { color: var(--accent2); }
   .track-num { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); min-width: 20px; text-align: right; }
   .track-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .track-play-hint { font-size: 10px; color: var(--accent2); opacity: 0; font-family: 'DM Mono', monospace; transition: opacity 0.15s; }
   .track-del { background: none; border: none; cursor: pointer; color: var(--muted); opacity: 0; display: flex; padding: 4px; border-radius: 4px; transition: opacity 0.2s, color 0.2s; }
   .playlist-item:hover .track-del { opacity: 1; }
   .track-del:hover { color: var(--danger); }
@@ -68,12 +66,6 @@
   .status-bar { width: 100%; max-width: 520px; margin-top: 8px; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
   .status-bar.uploading { color: var(--accent2); }
   .status-bar.error { color: var(--danger); }
-  .host-controls { width: 100%; max-width: 520px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; margin-top: 4px; }
-  .autoplay-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; background: none; border: none; }
-  .toggle-pill { width: 36px; height: 20px; border-radius: 99px; background: var(--surface3); position: relative; transition: background 0.2s; }
-  .toggle-pill.on { background: var(--accent); }
-  .toggle-pill::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: white; transition: transform 0.2s; }
-  .toggle-pill.on::after { transform: translateX(16px); }
   .role-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 100; padding: 24px; }
   .role-logo { font-family: 'DM Mono', monospace; font-size: 28px; margin-bottom: 8px; }
   .role-logo span { color: var(--accent); }
@@ -83,7 +75,6 @@
   .role-btn small { font-size: 12px; color: var(--muted); font-weight: 400; }
   .role-btn.host { border-color: rgba(124,106,247,0.4); }
   .empty-state { padding: 32px 28px; text-align: center; color: var(--muted); font-size: 13px; }
-  .ready-btn { display: none; width: 100%; max-width: 520px; padding: 18px; border-radius: 14px; border: none; background: var(--accent); color: white; font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 500; cursor: pointer; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -147,16 +138,9 @@
     </div>
   </div>
 
-  <div class="host-controls" id="hostControls" style="display:none">
-    <button class="autoplay-toggle" onclick="toggleAutoplay()">
-      <div class="toggle-pill on" id="autoplayPill"></div>
-      <span id="autoplayLabel">Autoplay activado</span>
-    </button>
-  </div>
-
   <div class="upload-section" id="uploadSection" style="display:none">
     <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,.mp3" multiple onchange="uploadFiles(this.files)">
+      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3" multiple onchange="uploadFiles(this.files)">
       <div class="upload-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="color:var(--muted)"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
       </div>
@@ -170,31 +154,23 @@
     <span id="statusText">Esperando canciones…</span>
   </div>
 
-  <button class="ready-btn" id="btnReady" onclick="userTapReady()">Tocar para escuchar 🎵</button>
+  <button id="btnReady" onclick="userTapReady()" style="display:none; width:100%; max-width:520px; padding:18px; border-radius:14px; border:none; background:var(--accent); color:white; font-family:'DM Sans',sans-serif; font-size:16px; font-weight:500; cursor:pointer;">
+    Tocar para escuchar 🎵
+  </button>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 let role = null;
-let autoplay = true;
 
 function chooseRole(r) {
   role = r;
   document.getElementById('roleScreen').style.display = 'none';
   const app = document.getElementById('app');
   app.style.display = 'flex';
-  if (role === 'host') {
-    document.getElementById('uploadSection').style.display = 'block';
-    document.getElementById('hostControls').style.display = 'flex';
-  }
-  unlockAudio();
+  if (role === 'host') document.getElementById('uploadSection').style.display = 'block';
+  unlockAudio(); // unlock on user tap of role button
   initSocket();
-}
-
-function toggleAutoplay() {
-  autoplay = !autoplay;
-  document.getElementById('autoplayPill').className = 'toggle-pill' + (autoplay ? ' on' : '');
-  document.getElementById('autoplayLabel').textContent = autoplay ? 'Autoplay activado' : 'Autoplay desactivado';
 }
 
 // ── Clock sync ────────────────────────────────────────────────────────────────
@@ -238,6 +214,7 @@ function initSocket() {
       unlockAudio();
       schedulePlay(startAt);
     } else {
+      // For guests: if audio is unlocked play directly, otherwise show tap button
       if (audioUnlocked) {
         schedulePlay(startAt);
       } else {
@@ -257,14 +234,13 @@ function setConn(ok) {
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let audio = new Audio();
-let prefetchAudio = new Audio();
 let tickInterval = null;
-let driftInterval = null;
 let goTimeout = null;
 let prepared = false;
 let currentState = null;
 let pendingPlayAt = null;
 let audioUnlocked = false;
+let prefetchAudio = new Audio(); // separate audio element for prefetching
 
 function unlockAudio() {
   if (audioUnlocked) return;
@@ -281,6 +257,7 @@ function userTapReady() {
   }
 }
 
+// Prefetch next track in background while current is playing
 function prefetchNext() {
   if (!currentState) return;
   const nextIndex = currentState.currentIndex + 1;
@@ -299,7 +276,8 @@ audio.addEventListener('ended', () => {
   if (!currentState) return;
   const trackId = currentState.playlist[currentState.currentIndex]?.id;
   socket.emit('ended', trackId);
-  if (role === 'host' && autoplay) {
+  // Auto-advance: if host, trigger next track automatically
+  if (role === 'host') {
     if (currentState.currentIndex < currentState.playlist.length - 1) {
       setTimeout(() => cmd('play'), 300);
     }
@@ -313,7 +291,6 @@ function applyState(s) {
   if (!s.playing) {
     audio.pause();
     clearInterval(tickInterval);
-    clearInterval(driftInterval);
     clearTimeout(goTimeout);
     prepared = false;
     const track = s.playlist[s.currentIndex];
@@ -334,21 +311,29 @@ function applyState(s) {
 function preloadAndReady(trackId, resumeFrom) {
   setStatusTxt('Cargando…', 'uploading');
   prepared = false;
+
   const url = `/track/${trackId}`;
   if (audio.src !== location.origin + url) {
     audio.src = url;
     audio.load();
   }
-  audio.currentTime = resumeFrom || 0;
+
   const report = () => {
     if (prepared) return;
     prepared = true;
+    // Seek to resume position AFTER confirming ready
     try { audio.currentTime = resumeFrom || 0; } catch(_) {}
     socket.emit('ready', { trackId });
     setStatusTxt('Listo, esperando…', 'uploading');
   };
+
+  // Always wait for canplaythrough — never report immediately from cache
   audio.addEventListener('canplaythrough', report, { once: true });
+
+  // Force reload to ensure canplaythrough fires even if cached
   audio.load();
+
+  // iOS hard fallback after 5s
   setTimeout(report, 5000);
 }
 
@@ -372,24 +357,8 @@ function doPlay() {
   clearInterval(tickInterval);
   tickInterval = setInterval(updateProgress, 300);
   setStatus(currentState);
+  // Start prefetching next track after 3 seconds
   setTimeout(prefetchNext, 3000);
-
-  // Gentle drift correction every 4s
-  clearInterval(driftInterval);
-  driftInterval = setInterval(() => {
-    if (!currentState?.playing || audio.paused) return;
-    const t = (getServerNow() - currentState.startedAt) / 1000;
-    const diff = audio.currentTime - t;
-    if (Math.abs(diff) > 1.5) {
-      audio.currentTime = t;
-    } else if (diff > 0.08) {
-      audio.playbackRate = 0.97;
-      setTimeout(() => { audio.playbackRate = 1.0; }, 1000);
-    } else if (diff < -0.08) {
-      audio.playbackRate = 1.03;
-      setTimeout(() => { audio.playbackRate = 1.0; }, 1000);
-    }
-  }, 4000);
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
@@ -404,7 +373,7 @@ function renderPlaylist(s) {
     li.innerHTML = `
       <span class="track-num">${i === s.currentIndex ? '▶' : (i + 1)}</span>
       <span class="track-name">${escHtml(t.name)}</span>
-      ${role === 'host' ? `<span class="track-play-hint">▶ tocar</span><button class="track-del" onclick="deleteTrack(event,'${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}
+      ${role === 'host' ? `<button class="track-del" onclick="deleteTrack(event,'${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}
     `;
     li.addEventListener('click', (e) => { if (!e.target.closest('.track-del')) cmd('select', i); });
     ul.appendChild(li);
@@ -461,7 +430,8 @@ function deleteTrack(e, id) { e.stopPropagation(); fetch('/track/' + id, { metho
 
 function uploadFiles(files) {
   if (!files.length) return;
-  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.toLowerCase().endsWith('.mp3'));
+  // Validate MP3 only
+  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.endsWith('.mp3'));
   if (invalid.length) { setStatusTxt('Solo se aceptan archivos MP3', 'error'); return; }
   setStatusTxt(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`, 'uploading');
   const fd = new FormData();
