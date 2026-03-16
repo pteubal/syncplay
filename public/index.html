@@ -478,24 +478,33 @@ function chooseRole(r) {
 
 // ── Socket ────────────────────────────────────────────────────────────────────
 let socket;
-let serverTimeDelta = 0; // our clock - server clock
+let serverTimeDelta = 0;
 
 function initSocket() {
   socket = io();
 
   socket.on('connect', () => {
     setConn(true);
-    // Measure clock offset 4 times on connect
-    for (let i = 0; i < 4; i++) setTimeout(measureRTT, i * 500);
-    // Keep measuring every 10s to track drift
-    setInterval(measureRTT, 10000);
+    for (let i = 0; i < 6; i++) setTimeout(measureRTT, i * 300);
+    setInterval(measureRTT, 8000);
   });
-  socket.on('disconnect', () => {
-    setConn(false);
-  });
+  socket.on('disconnect', () => setConn(false));
   socket.on('state', (s) => {
     serverTimeDelta = Date.now() - s.serverTime;
     applyState(s);
+  });
+
+  // Server asks us to prepare (preload audio)
+  socket.on('prepare', ({ trackId, resumeFrom }) => {
+    setStatusText('Cargando audio…', 'uploading');
+    preloadAndReady(trackId, resumeFrom);
+  });
+
+  // Server says GO at a specific server timestamp
+  socket.on('go', ({ startAt }) => {
+    const msUntilStart = startAt - getServerNow();
+    setStatusText('Arrancando…', '');
+    schedulePlay(msUntilStart);
   });
 }
 
@@ -513,7 +522,9 @@ function setConn(ok) {
 let currentState = null;
 let audio = new Audio();
 let tickInterval = null;
+let syncCheckInterval = null;
 let audioReady = false;
+let goTimeout = null;
 
 audio.addEventListener('ended', () => {
   if (currentState) socket.emit('ended', currentState.playlist[currentState.currentIndex]?.id);
@@ -523,7 +534,25 @@ function applyState(s) {
   currentState = s;
   renderPlaylist(s);
   renderNowPlaying(s);
-  syncAudio(s);
+  // Only sync audio from state if NOT in the middle of a prepare/go sequence
+  if (!s.playing) {
+    audio.pause();
+    clearInterval(tickInterval);
+    clearInterval(syncCheckInterval);
+    clearTimeout(goTimeout);
+    const track = s.playlist[s.currentIndex];
+    if (track) {
+      const url = `/track/${track.id}`;
+      if (audio.src !== location.origin + url) {
+        audio.src = url;
+        audioReady = false;
+        audio.load();
+        audio.addEventListener('canplay', () => { audioReady = true; }, { once: true });
+      }
+      audio.currentTime = s.pausedAt || 0;
+    }
+    updateProgress();
+  }
 }
 
 function renderPlaylist(s) {
@@ -574,32 +603,32 @@ function renderNowPlaying(s) {
   setStatus(s);
 }
 
-function setStatus(s) {
+function setStatusText(text, cls) {
   const bar = document.getElementById('statusBar');
   const txt = document.getElementById('statusText');
+  bar.className = 'status-bar' + (cls ? ' ' + cls : '');
+  txt.textContent = text;
+}
+
+function setStatus(s) {
   if (!s.playlist.length) {
-    bar.className = 'status-bar';
-    txt.textContent = 'Esperando canciones…';
+    setStatusText('Esperando canciones…', '');
   } else if (!s.playing) {
-    bar.className = 'status-bar';
-    txt.textContent = 'Pausado';
+    setStatusText('Pausado', '');
   } else {
-    bar.className = 'status-bar';
-    txt.textContent = role === 'host' ? 'Reproduciendo para todos ✦' : 'Sincronizado con el organizador ✦';
+    setStatusText(role === 'host' ? 'Reproduciendo para todos ✦' : 'Sincronizado con el organizador ✦', '');
   }
 }
 
-// ── Audio sync ─────────────────────────────────────────────────────────────────
-// Measures round-trip time to server to get accurate clock offset
+// ── Clock sync ────────────────────────────────────────────────────────────────
 let rttSamples = [];
 function measureRTT() {
   const t0 = Date.now();
   socket.emit('ping_time', t0, (serverNow) => {
     const rtt = Date.now() - t0;
-    const offset = Date.now() - serverNow - rtt / 2;
+    const offset = (Date.now() - rtt / 2) - serverNow;
     rttSamples.push(offset);
-    if (rttSamples.length > 8) rttSamples.shift();
-    // Use median to ignore outliers
+    if (rttSamples.length > 10) rttSamples.shift();
     const sorted = [...rttSamples].sort((a, b) => a - b);
     serverTimeDelta = sorted[Math.floor(sorted.length / 2)];
   });
@@ -609,85 +638,72 @@ function getServerNow() {
   return Date.now() - serverTimeDelta;
 }
 
-function getTargetPosition(s) {
-  if (!s.startedAt) return s.pausedAt || 0;
-  const elapsed = (getServerNow() - s.startedAt) / 1000;
-  return Math.max(0, elapsed); // negative = still in buffer delay, clamp to 0
-}
+// ── Preload & ready handshake ──────────────────────────────────────────────────
+function preloadAndReady(trackId, resumeFrom) {
+  const track = currentState?.playlist.find(t => t.id === trackId);
+  if (!track) return;
 
-let syncCheckInterval = null;
-
-function syncAudio(s) {
-  const track = s.playlist[s.currentIndex];
-  const trackUrl = track ? `/track/${track.id}` : null;
-
-  if (!track) {
-    audio.pause();
-    audio.src = '';
-    clearInterval(tickInterval);
-    clearInterval(syncCheckInterval);
-    return;
-  }
-
-  const fullUrl = location.origin + (trackUrl || '');
-  if (audio.src !== fullUrl) {
-    audio.src = trackUrl;
+  const url = `/track/${track.id}`;
+  if (audio.src !== location.origin + url) {
+    audio.src = url;
     audioReady = false;
     audio.load();
-    audio.addEventListener('canplay', () => { audioReady = true; }, { once: true });
   }
 
-  if (s.playing) {
-    const doPlay = () => {
-      const target = getTargetPosition(s);
-      const msUntilStart = s.startedAt - getServerNow();
-      if (msUntilStart > 0) {
-        // Still in buffer delay — seek to 0 and wait
-        audio.currentTime = 0;
-        setTimeout(() => {
-          const t = getTargetPosition(currentState);
-          audio.currentTime = Math.max(0, t);
-          audio.play().catch(() => {});
-        }, msUntilStart);
-      } else {
-        if (Math.abs(audio.currentTime - target) > 0.3) audio.currentTime = target;
-        audio.play().catch(() => {});
-      }
-    };
+  audio.currentTime = resumeFrom || 0;
 
-    if (audioReady) {
-      doPlay();
-    } else {
-      audio.addEventListener('canplay', doPlay, { once: true });
-    }
+  const onReady = () => {
+    audioReady = true;
+    socket.emit('ready', { trackId });
+    setStatusText('Listo, esperando otros…', 'uploading');
+  };
 
-    clearInterval(tickInterval);
-    tickInterval = setInterval(updateProgress, 500);
-
-    // Re-sync every 2 seconds - soft adjustment to avoid cuts
-    clearInterval(syncCheckInterval);
-    syncCheckInterval = setInterval(() => {
-      if (!currentState?.playing || !audioReady) return;
-      const target = getTargetPosition(currentState);
-      const diff = audio.currentTime - target;
-      if (Math.abs(diff) > 1.0) {
-        // Very far off — hard seek
-        audio.currentTime = target;
-      } else if (Math.abs(diff) > 0.1) {
-        // Slightly off — adjust speed gently, no cut
-        audio.playbackRate = diff > 0 ? 0.95 : 1.05;
-        setTimeout(() => { audio.playbackRate = 1.0; }, 1000);
-      }
-    }, 2000);
-
+  if (audio.readyState >= 3) {
+    onReady();
   } else {
-    const target = s.pausedAt !== null ? s.pausedAt : 0;
-    audio.currentTime = target;
-    audio.pause();
-    clearInterval(tickInterval);
-    clearInterval(syncCheckInterval);
-    updateProgress();
+    audio.addEventListener('canplaythrough', onReady, { once: true });
+    // Fallback: report ready after 3s even if not fully buffered
+    setTimeout(() => {
+      if (!audioReady) onReady();
+    }, 3000);
   }
+}
+
+// ── Scheduled playback ────────────────────────────────────────────────────────
+function schedulePlay(msUntilStart) {
+  clearTimeout(goTimeout);
+  clearInterval(syncCheckInterval);
+
+  if (msUntilStart > 0) {
+    goTimeout = setTimeout(() => startPlayback(), msUntilStart);
+  } else {
+    // Already past start time — seek to correct position and play
+    startPlayback();
+  }
+}
+
+function startPlayback() {
+  if (!currentState) return;
+  const target = (getServerNow() - currentState.startedAt) / 1000;
+  audio.currentTime = Math.max(0, target);
+  audio.play().catch(() => {});
+
+  clearInterval(tickInterval);
+  tickInterval = setInterval(updateProgress, 500);
+
+  // Gentle drift correction every 3s
+  clearInterval(syncCheckInterval);
+  syncCheckInterval = setInterval(() => {
+    if (!currentState?.playing || !audioReady) return;
+    const target = (getServerNow() - currentState.startedAt) / 1000;
+    const diff = audio.currentTime - target;
+    if (Math.abs(diff) > 1.5) {
+      audio.currentTime = target;
+    } else if (Math.abs(diff) > 0.15) {
+      audio.playbackRate = diff > 0 ? 0.94 : 1.06;
+      setTimeout(() => { audio.playbackRate = 1.0; }, 800);
+    }
+  }, 3000);
 }
 
 function updateProgress() {
