@@ -236,10 +236,31 @@ io.on("connection", (socket) => {
       state.playing = false;
       state.startedAt = null;
       state.pausedAt = null;
+      broadcastState();
+      // Auto-advance: prepare all devices then fire go
+      setTimeout(() => {
+        if (!currentTrack()) return;
+        const nextTrackId = currentTrack().id;
+        const connectedCount = io.sockets.sockets.size;
+        if (readySession) clearTimeout(readySession.timeout);
+        readySession = { trackId: nextTrackId, resumeFrom: 0, ready: new Set(), total: connectedCount };
+        io.emit("prepare", { trackId: nextTrackId, resumeFrom: 0 });
+        const firePlay = () => {
+          if (!readySession) return;
+          const rs = readySession; readySession = null;
+          const startAt = Date.now() + 800;
+          state.playing = true;
+          state.startedAt = startAt;
+          state.pausedAt = null;
+          io.emit("go", { startAt });
+          broadcastState();
+        };
+        readySession.timeout = setTimeout(firePlay, 6000);
+      }, 500);
     } else {
       state.playing = false;
+      broadcastState();
     }
-    broadcastState();
   });
 
   socket.on("disconnect", () => {
