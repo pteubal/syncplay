@@ -542,16 +542,21 @@ function applyState(s) {
     clearTimeout(goTimeout);
     const track = s.playlist[s.currentIndex];
     if (track) {
-      const url = `/track/${track.id}`;
-      if (audio.src !== location.origin + url) {
+      const cachedUrl = blobUrls[track.id];
+      const url = cachedUrl || `/track/${track.id}`;
+      if (audio.src !== url && audio.src !== location.origin + `/track/${track.id}`) {
         audio.src = url;
-        audioReady = false;
+        audioReady = !!cachedUrl;
         audio.load();
-        audio.addEventListener('canplay', () => { audioReady = true; }, { once: true });
+        if (!cachedUrl) audio.addEventListener('canplay', () => { audioReady = true; }, { once: true });
       }
       audio.currentTime = s.pausedAt || 0;
+      // Prefetch current track if not cached
+      if (!cachedUrl) fetchTrackBlob(track.id).catch(() => {});
     }
     updateProgress();
+    // Always prefetch next track when paused
+    setTimeout(prefetchNext, 1000);
   }
 }
 
@@ -639,33 +644,66 @@ function getServerNow() {
 }
 
 // ── Preload & ready handshake ──────────────────────────────────────────────────
-function preloadAndReady(trackId, resumeFrom) {
+// We fetch the entire file into a blob URL so playback is instant and gapless
+let blobUrls = {}; // trackId → blob URL
+let prefetchQueue = []; // track ids to prefetch in background
+
+async function fetchTrackBlob(trackId) {
+  if (blobUrls[trackId]) return blobUrls[trackId];
+  const res = await fetch(`/track/${trackId}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  blobUrls[trackId] = url;
+  return url;
+}
+
+function prefetchNext() {
+  if (!currentState) return;
+  const nextIndex = currentState.currentIndex + 1;
+  if (nextIndex < currentState.playlist.length) {
+    const nextId = currentState.playlist[nextIndex].id;
+    if (!blobUrls[nextId]) {
+      fetchTrackBlob(nextId).catch(() => {});
+    }
+  }
+}
+
+async function preloadAndReady(trackId, resumeFrom) {
   const track = currentState?.playlist.find(t => t.id === trackId);
   if (!track) return;
 
-  const url = `/track/${track.id}`;
-  if (audio.src !== location.origin + url) {
-    audio.src = url;
-    audioReady = false;
-    audio.load();
-  }
+  setStatusText('Descargando audio…', 'uploading');
 
-  audio.currentTime = resumeFrom || 0;
-
-  const onReady = () => {
+  try {
+    const url = await fetchTrackBlob(trackId);
+    if (audio.src !== url) {
+      audio.src = url;
+      audio.load();
+    }
+    audio.currentTime = resumeFrom || 0;
     audioReady = true;
     socket.emit('ready', { trackId });
     setStatusText('Listo, esperando otros…', 'uploading');
-  };
-
-  if (audio.readyState >= 3) {
-    onReady();
-  } else {
-    audio.addEventListener('canplaythrough', onReady, { once: true });
-    // Fallback: report ready after 3s even if not fully buffered
-    setTimeout(() => {
-      if (!audioReady) onReady();
-    }, 3000);
+    // Start prefetching next track in background
+    setTimeout(prefetchNext, 500);
+  } catch (e) {
+    // Fallback to streaming if fetch fails
+    const url = `/track/${trackId}`;
+    if (audio.src !== location.origin + url) {
+      audio.src = url;
+      audio.load();
+    }
+    const onReady = () => {
+      audioReady = true;
+      socket.emit('ready', { trackId });
+      setStatusText('Listo, esperando otros…', 'uploading');
+    };
+    if (audio.readyState >= 3) {
+      onReady();
+    } else {
+      audio.addEventListener('canplaythrough', onReady, { once: true });
+      setTimeout(() => { if (!audioReady) onReady(); }, 4000);
+    }
   }
 }
 
