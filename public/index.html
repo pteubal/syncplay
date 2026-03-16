@@ -294,23 +294,24 @@ function preloadAndReady(trackId, resumeFrom) {
     audio.src = url;
     audio.load();
   }
-  audio.currentTime = resumeFrom || 0;
 
   const report = () => {
     if (prepared) return;
     prepared = true;
+    // Seek to resume position AFTER confirming ready
+    try { audio.currentTime = resumeFrom || 0; } catch(_) {}
     socket.emit('ready', { trackId });
     setStatusTxt('Listo, esperando…', 'uploading');
   };
 
-  // Report ready as soon as we have enough data to play
-  if (audio.readyState >= 3) {
-    report();
-  } else {
-    audio.addEventListener('canplaythrough', report, { once: true });
-    // iOS fallback: report after 4s regardless
-    setTimeout(report, 4000);
-  }
+  // Always wait for canplaythrough — never report immediately from cache
+  audio.addEventListener('canplaythrough', report, { once: true });
+
+  // Force reload to ensure canplaythrough fires even if cached
+  audio.load();
+
+  // iOS hard fallback after 5s
+  setTimeout(report, 5000);
 }
 
 // ── Scheduled play ────────────────────────────────────────────────────────────
