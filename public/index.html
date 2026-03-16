@@ -611,7 +611,8 @@ function getServerNow() {
 
 function getTargetPosition(s) {
   if (!s.startedAt) return s.pausedAt || 0;
-  return (getServerNow() - s.startedAt) / 1000;
+  const elapsed = (getServerNow() - s.startedAt) / 1000;
+  return Math.max(0, elapsed); // negative = still in buffer delay, clamp to 0
 }
 
 let syncCheckInterval = null;
@@ -639,10 +640,19 @@ function syncAudio(s) {
   if (s.playing) {
     const doPlay = () => {
       const target = getTargetPosition(s);
-      if (target >= (audio.duration || Infinity)) return; // track ended
-      const diff = Math.abs(audio.currentTime - target);
-      if (diff > 0.3) audio.currentTime = target;
-      audio.play().catch(() => {});
+      const msUntilStart = s.startedAt - getServerNow();
+      if (msUntilStart > 0) {
+        // Still in buffer delay — seek to 0 and wait
+        audio.currentTime = 0;
+        setTimeout(() => {
+          const t = getTargetPosition(currentState);
+          audio.currentTime = Math.max(0, t);
+          audio.play().catch(() => {});
+        }, msUntilStart);
+      } else {
+        if (Math.abs(audio.currentTime - target) > 0.3) audio.currentTime = target;
+        audio.play().catch(() => {});
+      }
     };
 
     if (audioReady) {
@@ -654,21 +664,16 @@ function syncAudio(s) {
     clearInterval(tickInterval);
     tickInterval = setInterval(updateProgress, 500);
 
-    // Re-sync every 5 seconds to correct drift
+    // Re-sync every 2 seconds aggressively
     clearInterval(syncCheckInterval);
     syncCheckInterval = setInterval(() => {
       if (!currentState?.playing || !audioReady) return;
       const target = getTargetPosition(currentState);
       const diff = audio.currentTime - target;
-      if (Math.abs(diff) > 0.5) {
-        // Hard seek if too far off
+      if (Math.abs(diff) > 0.3) {
         audio.currentTime = target;
-      } else if (Math.abs(diff) > 0.1) {
-        // Gently adjust playback rate to catch up/slow down
-        audio.playbackRate = diff > 0 ? 0.96 : 1.04;
-        setTimeout(() => { audio.playbackRate = 1.0; }, 1500);
       }
-    }, 5000);
+    }, 2000);
 
   } else {
     const target = s.pausedAt !== null ? s.pausedAt : 0;
