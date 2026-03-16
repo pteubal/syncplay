@@ -30,6 +30,9 @@ let state = {
   pausedAt: null,
 };
 
+// ── Ready coordination ────────────────────────────────────────────────────────
+let readySession = null; // active "waiting for ready" session
+
 function currentTrack() {
   return state.playlist[state.currentIndex] || null;
 }
@@ -90,23 +93,92 @@ app.delete("/track/:id", (req, res) => {
 io.on("connection", (socket) => {
   socket.emit("state", sanitizedState());
 
+  // Clock sync
   socket.on("ping_time", (clientT0, callback) => {
     callback(Date.now());
   });
 
+  // Host presses Play → tell everyone to prepare
   socket.on("play", () => {
     if (!currentTrack()) return;
+
     const resumeFrom = state.pausedAt || 0;
-    // Delay start by 3s so all devices can buffer
-    const startDelay = 3000;
-    state.playing = true;
-    state.startedAt = Date.now() + startDelay - resumeFrom * 1000;
-    state.pausedAt = null;
-    broadcastState();
+    const trackId = currentTrack().id;
+    const connectedSockets = [...io.sockets.sockets.keys()];
+
+    // Cancel any previous ready session
+    if (readySession) {
+      clearTimeout(readySession.timeout);
+    }
+
+    readySession = {
+      trackId,
+      resumeFrom,
+      ready: new Set(),
+      total: connectedSockets.length,
+      timeout: null,
+    };
+
+    // Tell all clients to prepare (preload audio)
+    io.emit("prepare", { trackId, resumeFrom });
+
+    // Function to fire when everyone is ready (or timeout)
+    const firePlay = () => {
+      clearTimeout(readySession.timeout);
+      readySession = null;
+      // Schedule playback 800ms in the future so all devices get the message
+      const startAt = Date.now() + 800;
+      state.playing = true;
+      state.startedAt = startAt - resumeFrom * 1000;
+      state.pausedAt = null;
+      io.emit("go", { startAt });
+      broadcastState();
+    };
+
+    // Wait max 5 seconds for all devices, then fire anyway
+    readySession.timeout = setTimeout(firePlay, 5000);
+
+    // If solo (only 1 device) fire immediately after short buffer
+    if (connectedSockets.length <= 1) {
+      clearTimeout(readySession.timeout);
+      readySession.timeout = setTimeout(firePlay, 500);
+    }
+  });
+
+  // Client reports it's ready to play
+  socket.on("ready", ({ trackId }) => {
+    if (!readySession || readySession.trackId !== trackId) return;
+    readySession.ready.add(socket.id);
+    // Fire as soon as all connected clients are ready
+    if (readySession.ready.size >= readySession.total) {
+      clearTimeout(readySession.timeout);
+      const firePlay = () => {
+        readySession = null;
+        const startAt = Date.now() + 800;
+        state.playing = true;
+        state.startedAt = startAt - readySession?.resumeFrom * 1000 || startAt - (state.pausedAt || 0) * 1000;
+        state.pausedAt = null;
+        io.emit("go", { startAt });
+        broadcastState();
+      };
+      // Use closure to capture resumeFrom before clearing
+      const resumeFrom = readySession.resumeFrom;
+      readySession = null;
+      const startAt = Date.now() + 800;
+      state.playing = true;
+      state.startedAt = startAt - resumeFrom * 1000;
+      state.pausedAt = null;
+      io.emit("go", { startAt });
+      broadcastState();
+    }
   });
 
   socket.on("pause", () => {
     if (!state.playing) return;
+    if (readySession) {
+      clearTimeout(readySession.timeout);
+      readySession = null;
+    }
     state.pausedAt = (Date.now() - state.startedAt) / 1000;
     state.playing = false;
     state.startedAt = null;
@@ -116,8 +188,8 @@ io.on("connection", (socket) => {
   socket.on("next", () => {
     if (state.currentIndex < state.playlist.length - 1) {
       state.currentIndex++;
-      state.playing = true;
-      state.startedAt = Date.now();
+      state.playing = false;
+      state.startedAt = null;
       state.pausedAt = null;
       broadcastState();
     }
@@ -126,8 +198,8 @@ io.on("connection", (socket) => {
   socket.on("prev", () => {
     if (state.currentIndex > 0) {
       state.currentIndex--;
-      state.playing = true;
-      state.startedAt = Date.now();
+      state.playing = false;
+      state.startedAt = null;
       state.pausedAt = null;
       broadcastState();
     }
@@ -136,8 +208,8 @@ io.on("connection", (socket) => {
   socket.on("select", (index) => {
     if (index < 0 || index >= state.playlist.length) return;
     state.currentIndex = index;
-    state.playing = true;
-    state.startedAt = Date.now();
+    state.playing = false;
+    state.startedAt = null;
     state.pausedAt = null;
     broadcastState();
   });
@@ -146,13 +218,32 @@ io.on("connection", (socket) => {
     if (currentTrack()?.id !== trackId) return;
     if (state.currentIndex < state.playlist.length - 1) {
       state.currentIndex++;
-      state.playing = true;
-      state.startedAt = Date.now();
+      state.playing = false;
+      state.startedAt = null;
       state.pausedAt = null;
+      broadcastState();
     } else {
       state.playing = false;
+      broadcastState();
     }
-    broadcastState();
+  });
+
+  socket.on("disconnect", () => {
+    // If this socket was part of a ready session, recount
+    if (readySession) {
+      readySession.total = Math.max(1, readySession.total - 1);
+      if (readySession.ready.size >= readySession.total) {
+        clearTimeout(readySession.timeout);
+        const resumeFrom = readySession.resumeFrom;
+        readySession = null;
+        const startAt = Date.now() + 800;
+        state.playing = true;
+        state.startedAt = startAt - resumeFrom * 1000;
+        state.pausedAt = null;
+        io.emit("go", { startAt });
+        broadcastState();
+      }
+    }
   });
 });
 
