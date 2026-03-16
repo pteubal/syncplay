@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: syncplay
+    runtime: node
+    buildCommand: apt-get install -y ffmpeg && npm install
+    startCommand: node server.js
+    plan: free
