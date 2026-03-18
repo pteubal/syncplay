@@ -22,6 +22,9 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 
+const HOST_PIN = process.env.HOST_PIN || "5555";
+let hostSocketId = null;
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let state = {
   playlist: [],
@@ -137,12 +140,24 @@ app.delete("/track/:id", (req, res) => {
 // ── Sockets ───────────────────────────────────────────────────────────────────
 io.on("connection", (socket) => {
   socket.emit("state", sanitizedState());
+  // Tell new clients if host slot is taken
+  socket.emit("host_status", { taken: hostSocketId !== null });
+
+  socket.on("claim_host", ({ pin }, callback) => {
+    if (pin !== HOST_PIN) return callback({ ok: false, reason: "PIN incorrecto" });
+    if (hostSocketId !== null && hostSocketId !== socket.id) return callback({ ok: false, reason: "Ya hay un organizador activo" });
+    hostSocketId = socket.id;
+    socket.isHost = true;
+    io.emit("host_status", { taken: true });
+    callback({ ok: true });
+  });
 
   socket.on("ping_time", (clientT0, callback) => {
     callback(Date.now());
   });
 
   socket.on("play", () => {
+    if (!socket.isHost) return;
     if (!currentTrack()) return;
     const resumeFrom = state.pausedAt || 0;
     const trackId = currentTrack().id;
@@ -192,6 +207,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("pause", () => {
+    if (!socket.isHost) return;
     if (!state.playing) return;
     if (readySession) { clearTimeout(readySession.timeout); readySession = null; }
     state.pausedAt = (Date.now() - state.startedAt) / 1000;
@@ -201,6 +217,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("next", () => {
+    if (!socket.isHost) return;
     if (state.currentIndex < state.playlist.length - 1) {
       state.currentIndex++;
       state.playing = false;
@@ -211,6 +228,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("prev", () => {
+    if (!socket.isHost) return;
     if (state.currentIndex > 0) {
       state.currentIndex--;
       state.playing = false;
@@ -221,6 +239,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("select", (index) => {
+    if (!socket.isHost) return;
     if (index < 0 || index >= state.playlist.length) return;
     state.currentIndex = index;
     state.playing = false;
@@ -264,6 +283,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    if (socket.isHost) {
+      hostSocketId = null;
+      io.emit("host_status", { taken: false });
+    }
     if (!readySession) return;
     readySession.total = Math.max(1, readySession.total - 1);
     if (readySession.ready.size >= readySession.total) {
