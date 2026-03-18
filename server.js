@@ -66,11 +66,82 @@ function convertToLowBitrate(inputPath, outputPath) {
       "-ac", "2",
       "-y",
       outputPath
-    ], (err, stdout, stderr) => {
+    ], (err) => {
       if (err) reject(err);
       else resolve(outputPath);
     });
   });
+}
+
+function getDuration(filePath) {
+  return new Promise((resolve) => {
+    execFile("ffprobe", [
+      "-v", "quiet",
+      "-print_format", "json",
+      "-show_format",
+      filePath
+    ], (err, stdout) => {
+      if (err) { resolve(null); return; }
+      try {
+        const data = JSON.parse(stdout);
+        resolve(parseFloat(data.format.duration) || null);
+      } catch { resolve(null); }
+    });
+  });
+}
+
+// ── Auto-advance timer ────────────────────────────────────────────────────────
+let autoAdvanceTimer = null;
+
+function scheduleAutoAdvance() {
+  clearTimeout(autoAdvanceTimer);
+  const track = currentTrack();
+  if (!track || !state.playing || !state.startedAt || !track.duration) return;
+
+  const elapsed = (Date.now() - state.startedAt) / 1000;
+  const remaining = track.duration - elapsed;
+  if (remaining <= 0) {
+    doAutoAdvance();
+    return;
+  }
+
+  autoAdvanceTimer = setTimeout(doAutoAdvance, remaining * 1000 + 500);
+}
+
+function doAutoAdvance() {
+  if (!state.playing) return;
+  if (state.currentIndex < state.playlist.length - 1) {
+    state.currentIndex++;
+    state.playing = false;
+    state.startedAt = null;
+    state.pausedAt = null;
+    broadcastState();
+    // Trigger play for next track
+    setTimeout(() => triggerPlay(), 500);
+  } else {
+    state.playing = false;
+    broadcastState();
+  }
+}
+
+function triggerPlay() {
+  if (!currentTrack()) return;
+  const connectedCount = io.sockets.sockets.size;
+  if (readySession) clearTimeout(readySession.timeout);
+  readySession = { trackId: currentTrack().id, resumeFrom: 0, ready: new Set(), total: connectedCount };
+  io.emit("prepare", { trackId: currentTrack().id, resumeFrom: 0 });
+  const firePlay = () => {
+    if (!readySession) return;
+    const rs = readySession; readySession = null;
+    const startAt = Date.now() + 800;
+    state.playing = true;
+    state.startedAt = startAt - rs.resumeFrom * 1000;
+    state.pausedAt = null;
+    io.emit("go", { startAt });
+    broadcastState();
+    scheduleAutoAdvance();
+  };
+  readySession.timeout = setTimeout(firePlay, 6000);
 }
 
 // ── REST ──────────────────────────────────────────────────────────────────────
@@ -86,25 +157,28 @@ app.post("/upload", upload.array("tracks"), async (req, res) => {
 
     try {
       await convertToLowBitrate(rawPath, outPath);
-      fs.unlinkSync(rawPath); // delete original
+      fs.unlinkSync(rawPath);
       const size = fs.statSync(outPath).size;
+      const duration = await getDuration(outPath);
       added.push({
         id: outName,
         name: f.originalname.replace(/\.[^.]+$/, ""),
         filename: outName,
         size,
+        duration,
       });
     } catch (e) {
-      // ffmpeg failed — use original file as fallback
       console.error("ffmpeg error, using original:", e.message);
       fs.renameSync(rawPath, rawPath.replace("_raw_", "_"));
       const fallbackName = f.filename.replace("_raw_", "_");
       const size = fs.statSync(path.join(uploadDir, fallbackName)).size;
+      const duration = await getDuration(path.join(uploadDir, fallbackName));
       added.push({
         id: fallbackName,
         name: f.originalname.replace(/\.[^.]+$/, ""),
         filename: fallbackName,
         size,
+        duration,
       });
     }
   }
@@ -184,6 +258,7 @@ io.on("connection", (socket) => {
       state.pausedAt = null;
       io.emit("go", { startAt });
       broadcastState();
+      scheduleAutoAdvance();
     };
 
     // Fire when all ready OR after 6s timeout
@@ -203,6 +278,7 @@ io.on("connection", (socket) => {
       state.pausedAt = null;
       io.emit("go", { startAt });
       broadcastState();
+      scheduleAutoAdvance();
     }
   });
 
@@ -210,6 +286,7 @@ io.on("connection", (socket) => {
     if (!socket.isHost) return;
     if (!state.playing) return;
     if (readySession) { clearTimeout(readySession.timeout); readySession = null; }
+    clearTimeout(autoAdvanceTimer);
     state.pausedAt = (Date.now() - state.startedAt) / 1000;
     state.playing = false;
     state.startedAt = null;
