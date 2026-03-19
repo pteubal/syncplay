@@ -157,6 +157,10 @@
       <div class="upload-text"><strong>Elegí archivos MP3</strong> o arrastralos acá</div>
       <div class="upload-hint">Solo MP3 · hasta 50 MB por archivo</div>
     </div>
+    <div id="uploadProgress" style="display:none; margin-top:12px; background:var(--surface2); border-radius:8px; overflow:hidden; height:4px;">
+      <div id="uploadProgressFill" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
+    </div>
+    <div id="uploadProgressLabel" style="display:none; margin-top:6px; font-family:'DM Mono',monospace; font-size:11px; color:var(--accent2); text-align:center;"></div>
   </div>
 
   <div class="status-bar" id="statusBar">
@@ -485,16 +489,48 @@ function deleteTrack(e, id) { e.stopPropagation(); fetch('/track/' + id, { metho
 
 function uploadFiles(files) {
   if (!files.length) return;
-  // Validate MP3 only
-  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.endsWith('.mp3'));
+  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.toLowerCase().endsWith('.mp3'));
   if (invalid.length) { setStatusTxt('Solo se aceptan archivos MP3', 'error'); return; }
-  setStatusTxt(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`, 'uploading');
+
   const fd = new FormData();
   Array.from(files).forEach(f => fd.append('tracks', f));
-  fetch('/upload', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(() => { setStatusTxt('Subido ✓', ''); setTimeout(() => setStatus(currentState), 2000); })
-    .catch(() => setStatusTxt('Error al subir', 'error'));
+
+  const progBar = document.getElementById('uploadProgress');
+  const progFill = document.getElementById('uploadProgressFill');
+  const progLabel = document.getElementById('uploadProgressLabel');
+
+  progBar.style.display = 'block';
+  progLabel.style.display = 'block';
+  progFill.style.width = '0%';
+  progLabel.textContent = `Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`;
+  setStatusTxt(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`, 'uploading');
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/upload');
+  xhr.upload.addEventListener('progress', (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      progFill.style.width = pct + '%';
+      progLabel.textContent = `Subiendo… ${pct}%`;
+    }
+  });
+  xhr.addEventListener('load', () => {
+    progFill.style.width = '100%';
+    progLabel.textContent = '¡Listo! ✓';
+    setStatusTxt('Canciones subidas ✓', '');
+    setTimeout(() => {
+      progBar.style.display = 'none';
+      progLabel.style.display = 'none';
+      progFill.style.width = '0%';
+      setStatus(currentState);
+    }, 2000);
+  });
+  xhr.addEventListener('error', () => {
+    progBar.style.display = 'none';
+    progLabel.style.display = 'none';
+    setStatusTxt('Error al subir', 'error');
+  });
+  xhr.send(fd);
   document.getElementById('fileInput').value = '';
 }
 
