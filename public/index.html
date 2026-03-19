@@ -337,6 +337,16 @@ function userTapReady() {
   if (pendingPlayAt !== null) {
     schedulePlay(pendingPlayAt);
     pendingPlayAt = null;
+  } else if (currentState?.playing) {
+    // Woke up from sleep — resync and play
+    const target = currentState.startedAt
+      ? (getServerNow() - currentState.startedAt) / 1000
+      : 0;
+    if (target > 0 && target < (audio.duration || Infinity)) {
+      audio.currentTime = target;
+    }
+    audio.play().catch(() => {});
+    setStatus(currentState);
   }
 }
 
@@ -568,10 +578,30 @@ if (zone) {
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); uploadFiles(e.dataTransfer.files); });
 }
 
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// ── Wake up handler ───────────────────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!currentState?.playing) return;
 
-// Connect early so we know host status before user picks role
-window.addEventListener('load', () => initSocketEarly());
+  // Try to resume audio automatically
+  if (audio.paused) {
+    audio.play().catch(() => {
+      // iOS blocked it — show tap button
+      document.getElementById('btnReady').style.display = 'block';
+      setStatusTxt('Tocá para reanudar 🎵', 'uploading');
+    });
+  }
+
+  // Re-sync position to where we should be
+  if (currentState.startedAt) {
+    const target = (getServerNow() - currentState.startedAt) / 1000;
+    if (target > 0 && target < (audio.duration || Infinity)) {
+      if (Math.abs(audio.currentTime - target) > 1) {
+        audio.currentTime = target;
+      }
+    }
+  }
+});
 </script>
 </body>
 </html>
