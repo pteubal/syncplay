@@ -46,10 +46,8 @@
   .playlist-title { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
   .playlist-count { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
   .playlist-list { list-style: none; max-height: 260px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--surface3) transparent; }
-  .playlist-item { display: flex; align-items: center; gap: 12px; padding: 10px 28px; cursor: pointer; transition: background 0.15s; position: relative; }
+  .playlist-item { display: flex; align-items: center; gap: 12px; padding: 10px 28px; cursor: pointer; transition: background 0.15s; }
   .playlist-item:hover { background: var(--surface2); }
-  .playlist-item:hover .track-play-hint { opacity: 1; }
-  .track-play-hint { font-size: 10px; color: var(--accent2); opacity: 0; font-family: 'DM Mono', monospace; transition: opacity 0.15s; white-space: nowrap; }
   .playlist-item.active { background: var(--surface3); }
   .playlist-item.active .track-name { color: var(--accent2); }
   .track-num { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); min-width: 20px; text-align: right; }
@@ -94,8 +92,7 @@
   </button>
 </div>
 
-<!-- PIN modal -->
-<div id="pinModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; display:none; align-items:center; justify-content:center; padding:24px;">
+<div id="pinModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; align-items:center; justify-content:center; padding:24px;">
   <div style="background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:32px; width:100%; max-width:320px; display:flex; flex-direction:column; gap:16px;">
     <p style="font-family:'DM Mono',monospace; font-size:14px; text-align:center; color:var(--text);">Ingresá el PIN de organizador</p>
     <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="····" style="text-align:center; font-size:24px; letter-spacing:8px; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--surface2); color:var(--text); width:100%; font-family:'DM Mono',monospace;" onkeydown="if(event.key==='Enter') submitPin()">
@@ -153,26 +150,13 @@
 
   <div class="upload-section" id="uploadSection" style="display:none">
     <div class="upload-zone" id="uploadZone">
-      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,.mp3" multiple onchange="uploadFiles(this.files)">
+      <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3" multiple onchange="uploadFiles(this.files)">
       <div class="upload-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="color:var(--muted)"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
       </div>
       <div class="upload-text"><strong>Elegí archivos MP3</strong> o arrastralos acá</div>
       <div class="upload-hint">Solo MP3 · hasta 50 MB por archivo</div>
     </div>
-    <div id="uploadProgress" style="display:none; margin-top:12px; background:var(--surface2); border-radius:8px; overflow:hidden; height:4px;">
-      <div id="uploadProgressFill" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
-    </div>
-    <div id="uploadProgressLabel" style="display:none; margin-top:6px; font-family:'DM Mono',monospace; font-size:11px; color:var(--accent2); text-align:center;"></div>
-  </div>
-
-  <div id="hostControls" style="display:none; width:100%; max-width:520px; display:none; align-items:center; justify-content:flex-end;">
-    <button onclick="toggleAutoplay()" style="background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:8px; font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); padding:4px;">
-      <div id="autoplayPill" style="width:36px; height:20px; border-radius:99px; background:var(--accent); position:relative; transition:background 0.2s; flex-shrink:0;">
-        <div style="position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:white; transition:transform 0.2s;" id="autoplayThumb"></div>
-      </div>
-      <span id="autoplayLabel">Autoplay</span>
-    </button>
   </div>
 
   <div class="status-bar" id="statusBar">
@@ -188,11 +172,11 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>
 let role = null;
-let autoplay = true;
 
 function tryHost() {
   const btn = document.getElementById('btnHost');
   if (btn.disabled) return;
+  initSocketEarly();
   document.getElementById('pinModal').style.display = 'flex';
   document.getElementById('pinInput').value = '';
   document.getElementById('pinError').textContent = '';
@@ -206,8 +190,6 @@ function closePin() {
 function submitPin() {
   const pin = document.getElementById('pinInput').value.trim();
   if (!pin) return;
-  // Connect first if not connected
-  if (!socket) initSocketEarly();
   socket.emit('claim_host', { pin }, (res) => {
     if (res.ok) {
       closePin();
@@ -224,19 +206,9 @@ function chooseRole(r) {
   document.getElementById('roleScreen').style.display = 'none';
   const app = document.getElementById('app');
   app.style.display = 'flex';
-  if (role === 'host') {
-    document.getElementById('uploadSection').style.display = 'block';
-    document.getElementById('hostControls').style.display = 'flex';
-  }
+  if (role === 'host') document.getElementById('uploadSection').style.display = 'block';
   unlockAudio();
-  if (!socket) initSocketEarly();
-}
-
-function toggleAutoplay() {
-  autoplay = !autoplay;
-  document.getElementById('autoplayPill').style.background = autoplay ? 'var(--accent)' : 'var(--surface3)';
-  document.getElementById('autoplayThumb').style.transform = autoplay ? 'translateX(16px)' : 'none';
-  document.getElementById('autoplayLabel').textContent = autoplay ? 'Autoplay' : 'Autoplay off';
+  initSocketEarly();
 }
 
 // ── Clock sync ────────────────────────────────────────────────────────────────
@@ -275,17 +247,11 @@ function initSocketEarly() {
   });
   socket.on('host_status', ({ taken }) => {
     const btn = document.getElementById('btnHost');
-    if (taken) {
-      btn.disabled = true;
-      btn.style.opacity = '0.4';
-      btn.style.cursor = 'not-allowed';
-      btn.querySelector('small').textContent = 'Ya hay un organizador activo';
-    } else {
-      btn.disabled = false;
-      btn.style.opacity = '1';
-      btn.style.cursor = 'pointer';
-      btn.querySelector('small').textContent = 'Requiere PIN de acceso';
-    }
+    if (!btn) return;
+    btn.disabled = taken;
+    btn.style.opacity = taken ? '0.4' : '1';
+    btn.style.cursor = taken ? 'not-allowed' : 'pointer';
+    btn.querySelector('small').textContent = taken ? 'Ya hay un organizador activo' : 'Requiere PIN de acceso';
   });
   socket.on('prepare', ({ trackId, resumeFrom }) => {
     if (role) preloadAndReady(trackId, resumeFrom);
@@ -304,10 +270,7 @@ function initSocketEarly() {
   });
 }
 
-function initSocket() {
-  initSocketEarly();
-  if (socket.connected) setConn(true);
-}
+function initSocket() { initSocketEarly(); }
 
 function cmd(ev, payload) { if (role === 'host') socket.emit(ev, payload); }
 function setConn(ok) {
@@ -337,16 +300,6 @@ function userTapReady() {
   if (pendingPlayAt !== null) {
     schedulePlay(pendingPlayAt);
     pendingPlayAt = null;
-  } else if (currentState?.playing) {
-    // Woke up from sleep — resync and play
-    const target = currentState.startedAt
-      ? (getServerNow() - currentState.startedAt) / 1000
-      : 0;
-    if (target > 0 && target < (audio.duration || Infinity)) {
-      audio.currentTime = target;
-    }
-    audio.play().catch(() => {});
-    setStatus(currentState);
   }
 }
 
@@ -369,7 +322,8 @@ audio.addEventListener('ended', () => {
   if (!currentState) return;
   const trackId = currentState.playlist[currentState.currentIndex]?.id;
   socket.emit('ended', trackId);
-  if (role === 'host' && autoplay) {
+  // Auto-advance: if host, trigger next track automatically
+  if (role === 'host') {
     if (currentState.currentIndex < currentState.playlist.length - 1) {
       setTimeout(() => cmd('play'), 300);
     }
@@ -465,7 +419,7 @@ function renderPlaylist(s) {
     li.innerHTML = `
       <span class="track-num">${i === s.currentIndex ? '▶' : (i + 1)}</span>
       <span class="track-name">${escHtml(t.name)}</span>
-      ${role === 'host' ? `<span class="track-play-hint">▶ tocar</span><button class="track-del" onclick="deleteTrack(event,'${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}
+      ${role === 'host' ? `<button class="track-del" onclick="deleteTrack(event,'${t.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}
     `;
     li.addEventListener('click', (e) => { if (!e.target.closest('.track-del')) cmd('select', i); });
     ul.appendChild(li);
@@ -522,52 +476,16 @@ function deleteTrack(e, id) { e.stopPropagation(); fetch('/track/' + id, { metho
 
 function uploadFiles(files) {
   if (!files.length) return;
-  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.toLowerCase().endsWith('.mp3'));
+  // Validate MP3 only
+  const invalid = Array.from(files).filter(f => !f.type.includes('mp3') && !f.type.includes('mpeg') && !f.name.endsWith('.mp3'));
   if (invalid.length) { setStatusTxt('Solo se aceptan archivos MP3', 'error'); return; }
-
+  setStatusTxt(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`, 'uploading');
   const fd = new FormData();
   Array.from(files).forEach(f => fd.append('tracks', f));
-
-  const progBar = document.getElementById('uploadProgress');
-  const progFill = document.getElementById('uploadProgressFill');
-  const progLabel = document.getElementById('uploadProgressLabel');
-
-  progBar.style.display = 'block';
-  progLabel.style.display = 'block';
-  progFill.style.width = '0%';
-  progLabel.textContent = `Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`;
-  setStatusTxt(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}…`, 'uploading');
-
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/upload');
-
-  xhr.upload.addEventListener('progress', (e) => {
-    if (e.lengthComputable) {
-      const pct = Math.round(e.loaded / e.total * 100);
-      progFill.style.width = pct + '%';
-      progLabel.textContent = `Subiendo… ${pct}%`;
-    }
-  });
-
-  xhr.addEventListener('load', () => {
-    progFill.style.width = '100%';
-    progLabel.textContent = '¡Listo! ✓';
-    setStatusTxt('Canciones subidas ✓', '');
-    setTimeout(() => {
-      progBar.style.display = 'none';
-      progLabel.style.display = 'none';
-      progFill.style.width = '0%';
-      setStatus(currentState);
-    }, 2000);
-  });
-
-  xhr.addEventListener('error', () => {
-    progBar.style.display = 'none';
-    progLabel.style.display = 'none';
-    setStatusTxt('Error al subir', 'error');
-  });
-
-  xhr.send(fd);
+  fetch('/upload', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(() => { setStatusTxt('Subido ✓', ''); setTimeout(() => setStatus(currentState), 2000); })
+    .catch(() => setStatusTxt('Error al subir', 'error'));
   document.getElementById('fileInput').value = '';
 }
 
@@ -578,30 +496,9 @@ if (zone) {
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); uploadFiles(e.dataTransfer.files); });
 }
 
-// ── Wake up handler ───────────────────────────────────────────────────────────
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
-  if (!currentState?.playing) return;
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  // Try to resume audio automatically
-  if (audio.paused) {
-    audio.play().catch(() => {
-      // iOS blocked it — show tap button
-      document.getElementById('btnReady').style.display = 'block';
-      setStatusTxt('Tocá para reanudar 🎵', 'uploading');
-    });
-  }
-
-  // Re-sync position to where we should be
-  if (currentState.startedAt) {
-    const target = (getServerNow() - currentState.startedAt) / 1000;
-    if (target > 0 && target < (audio.duration || Infinity)) {
-      if (Math.abs(audio.currentTime - target) > 1) {
-        audio.currentTime = target;
-      }
-    }
-  }
-});
+window.addEventListener('load', () => initSocketEarly());
 </script>
 </body>
 </html>
